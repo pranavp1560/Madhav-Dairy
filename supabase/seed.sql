@@ -22,12 +22,11 @@
 -- 1. Organization Master
 -- -----------------------------------------------------------------------------
 INSERT INTO public.organizations (
-  id, name, legal_name, slug, code, gstin, fssai_license, phone, email, address, timezone, currency, is_active
+  id, name, legal_name, code, gstin, fssai_number, phone, email, address, timezone, currency, is_active
 ) VALUES (
   '00000000-0000-0000-0000-000000000001',
   'Madhav Dairy Private Limited',
   'Madhav Dairy Products Pvt. Ltd.',
-  'madhav-dairy',
   'MD',
   '27AABCM9124K1Z0',
   '11522038000451',
@@ -438,12 +437,12 @@ INSERT INTO public.expense_categories (id, organization_id, name, is_active) VAL
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO public.expenses (
-  organization_id, category_id, amount, expense_date, payment_method, paid_to, reference_number, notes
+  organization_id, expense_number, category_id, description, amount, payment_method, paid_to, reference_number
 ) VALUES
-  ('00000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000001', 4200.00, '2026-09-16', 'upi', 'Indian Oil Fuel Pump (Shirwal)', 'UPI-9921448', 'Diesel for Refrigerated Van MH-12-DT-4421'),
-  ('00000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000002', 48500.00, '2026-09-15', 'bank_transfer', 'MSEDCL Maharashtra Electricity', 'MSEDCL-SEP26', 'Processing plant & cold chain monthly power bill'),
-  ('00000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000004', 3800.00, '2026-09-12', 'cash', 'Shree Refrigeration Works', 'CASH-VOUCH-18', 'Cold room B compressor Freon top-up & gasket replacement'),
-  ('00000000-0000-0000-0000-000000000001', 'e0000000-0000-0000-0000-000000000005', 85000.00, '2026-09-10', 'bank_transfer', 'Staff Payroll (12 Employees)', 'PAYROLL-SEP-1', 'Processing plant operators & technicians semi-monthly wages');
+  ('00000000-0000-0000-0000-000000000001', 'EXP-2026-001', 'e0000000-0000-0000-0000-000000000001', 'Diesel for Refrigerated Van MH-12-DT-4421', 4200.00, 'upi', 'Indian Oil Fuel Pump (Shirwal)', 'UPI-9921448'),
+  ('00000000-0000-0000-0000-000000000001', 'EXP-2026-002', 'e0000000-0000-0000-0000-000000000002', 'Processing plant & cold chain monthly power bill', 48500.00, 'bank_transfer', 'MSEDCL Maharashtra Electricity', 'MSEDCL-SEP26'),
+  ('00000000-0000-0000-0000-000000000001', 'EXP-2026-003', 'e0000000-0000-0000-0000-000000000004', 'Cold room B compressor Freon top-up & gasket replacement', 3800.00, 'cash', 'Shree Refrigeration Works', 'CASH-VOUCH-18'),
+  ('00000000-0000-0000-0000-000000000001', 'EXP-2026-004', 'e0000000-0000-0000-0000-000000000005', 'Processing plant operators & technicians semi-monthly wages', 85000.00, 'bank_transfer', 'Staff Payroll (12 Employees)', 'PAYROLL-SEP-1');
 
 -- -----------------------------------------------------------------------------
 -- 21. Freshness Radar: Expiry Rules & Active Alerts

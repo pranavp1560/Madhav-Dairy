@@ -22,21 +22,25 @@ export const CustomerRegister: React.FC<CustomerRegisterProps> = ({ onBackToLogi
   const [address, setAddress] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shopName || !ownerName || !mobile || !address) return;
 
     setIsLoading(true);
-    setTimeout(() => {
-      registerRetailer({
+    try {
+      await registerRetailer({
         businessName: shopName,
         ownerName,
         mobile,
         address,
+        password,
       });
-      setIsLoading(false);
       onSuccess();
-    }, 400);
+    } catch {
+      // Toast displayed in context
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (

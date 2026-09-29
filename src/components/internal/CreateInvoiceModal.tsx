@@ -84,25 +84,29 @@ export const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
   }, 0);
   const totalAmount = Math.round(subtotal + taxAmount);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!retailerId || rows.length === 0) return;
 
-    const newInv = createInvoice({
-      retailerId,
-      items: rows.map(r => ({
-        productId: r.productId,
-        batchNumber: r.batchNumber,
-        quantity: r.quantity,
-        rate: r.rate,
-        taxPercent: r.taxPercent,
-        discount: r.discount,
-      })),
-    });
+    try {
+      const newInv = await createInvoice({
+        retailerId,
+        items: rows.map(r => ({
+          productId: r.productId,
+          batchNumber: r.batchNumber,
+          quantity: r.quantity,
+          rate: r.rate,
+          taxPercent: r.taxPercent,
+          discount: r.discount,
+        })),
+      });
 
-    onClose();
-    if (onOpenPrintInvoice) {
-      onOpenPrintInvoice(newInv.id);
+      onClose();
+      if (onOpenPrintInvoice) {
+        onOpenPrintInvoice(newInv.id);
+      }
+    } catch {
+      // Toast displayed in context
     }
   };
 

@@ -6,30 +6,41 @@ import { Input } from '../ui/Input';
 import { Shield, ArrowRight, ArrowLeft, KeyRound, UserCheck, Milk } from 'lucide-react';
 
 export const InternalLogin: React.FC = () => {
-  const { setPortal, setInternalRole, addToast } = useDairy();
-  const [email, setEmail] = useState('admin@madhavdairy.com');
-  const [password, setPassword] = useState('admin123');
+  const { setPortal, login, addToast } = useDairy();
+  const [email, setEmail] = useState('madhav@madhavdairy.com');
+  const [password, setPassword] = useState('Password@123');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const demoRoles: { role: InternalRole; title: string; email: string; desc: string }[] = [
-    { role: 'admin', title: 'Owner / Admin', email: 'admin@madhavdairy.com', desc: 'Full business & system access' },
-    { role: 'production_manager', title: 'Production Manager', email: 'production@madhavdairy.com', desc: 'Batches, processing, QC' },
-    { role: 'accountant', title: 'Accountant', email: 'accounts@madhavdairy.com', desc: 'Invoices, ledger, collections' },
-    { role: 'warehouse_manager', title: 'Warehouse / Stock Manager', email: 'warehouse@madhavdairy.com', desc: 'Inventory & stock movements' },
+    { role: 'admin', title: 'Owner / Admin', email: 'madhav@madhavdairy.com', desc: 'Full business & system access' },
+    { role: 'production_manager', title: 'Production Manager', email: 'suresh.deshmukh@madhavdairy.com', desc: 'Batches, processing, QC' },
+    { role: 'accountant', title: 'Accountant', email: 'sunil.kulkarni@madhavdairy.com', desc: 'Invoices, ledger, collections' },
+    { role: 'warehouse_manager', title: 'Warehouse / Stock Manager', email: 'vikram.shinde@madhavdairy.com', desc: 'Inventory & stock movements' },
   ];
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPortal('internal');
-    addToast('Logged in successfully as Internal User', 'success');
+    setIsLoggingIn(true);
+    try {
+      await login(email, password);
+    } catch (err: any) {
+      addToast(err.message || 'Login failed', 'error');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
-  const handleSelectRole = (role: InternalRole, userEmail: string) => {
-    setInternalRole(role);
+  const handleSelectRole = async (role: InternalRole, userEmail: string) => {
     setEmail(userEmail);
-    setPassword('password123');
-    setPortal('internal');
-    const roleTitle = demoRoles.find(r => r.role === role)?.title;
-    addToast(`Logged in as ${roleTitle}`, 'success');
+    setPassword('Password@123');
+    setIsLoggingIn(true);
+    try {
+      await login(userEmail, 'Password@123');
+    } catch (err: any) {
+      addToast(err.message || 'Login failed', 'error');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
   return (
@@ -109,6 +120,7 @@ export const InternalLogin: React.FC = () => {
               variant="primary"
               size="lg"
               className="w-full mt-2"
+              isLoading={isLoggingIn}
             >
               Sign In to ERP Dashboard &rarr;
             </Button>

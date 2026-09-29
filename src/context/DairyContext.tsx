@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useMemo } from 'react';
+import React, { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Product,
   Batch,
@@ -13,7 +13,6 @@ import {
   NotificationItem,
   ExpiryRule,
   InternalRole,
-  ProductCategory,
   OrderStatus,
   RawMaterial,
   RawMaterialMovement,
@@ -21,23 +20,21 @@ import {
   RolePermission
 } from '../types/dairy';
 import {
-  INITIAL_PRODUCTS,
-  INITIAL_BATCHES,
-  INITIAL_RETAILERS,
-  INITIAL_ORDERS,
-  INITIAL_INVOICES,
-  INITIAL_PAYMENTS,
-  INITIAL_LEDGER,
-  INITIAL_EXPENSES,
-  INITIAL_STOCK_MOVEMENTS,
-  INITIAL_EXPIRY_ALERTS,
-  INITIAL_NOTIFICATIONS,
-  INITIAL_EXPIRY_RULES,
-  INITIAL_RAW_MATERIALS,
-  INITIAL_RAW_MATERIAL_MOVEMENTS,
-  INITIAL_USERS,
-  INITIAL_ROLE_PERMISSIONS,
-} from '../data/mockData';
+  authService,
+  productService,
+  customerService,
+  orderService,
+  invoiceService,
+  paymentService,
+  ledgerService,
+  inventoryService,
+  rawMaterialService,
+  expenseService,
+  expiryService,
+  notificationService,
+  userService,
+  UserSessionProfile
+} from '../services';
 
 export interface CartItem {
   product: Product;
@@ -69,11 +66,19 @@ interface DairyContextType {
   selectedInvoiceId: string | null;
   setSelectedInvoiceId: (id: string | null) => void;
 
+  // Supabase Auth & Session Profile
+  currentUser: UserSessionProfile | null;
+  login: (email: string, password: string) => Promise<UserSessionProfile>;
+  logout: () => Promise<void>;
+  isLoading: boolean;
+  error: string | null;
+  refreshData: () => Promise<void>;
+
   // Active Retailer
   currentRetailer: Retailer;
   setCurrentRetailer: (r: Retailer) => void;
 
-  // Data
+  // Live Supabase Domain Data
   products: Product[];
   batches: Batch[];
   retailers: Retailer[];
@@ -99,7 +104,7 @@ interface DairyContextType {
   updateCartQty: (productId: string, qty: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
-  placeOrder: (notes?: string) => Order;
+  placeOrder: (notes?: string) => Promise<Order>;
   reorder: (orderId: string) => void;
 
   // Business Actions
@@ -109,7 +114,7 @@ interface DairyContextType {
     productionDate: string;
     expiryDate: string;
     notes?: string;
-  }) => Batch;
+  }) => Promise<Batch>;
 
   createInvoice: (data: {
     retailerId: string;
@@ -121,7 +126,7 @@ interface DairyContextType {
       taxPercent: number;
       discount?: number;
     }[];
-  }) => Invoice;
+  }) => Promise<Invoice>;
 
   recordPayment: (data: {
     retailerId: string;
@@ -130,7 +135,7 @@ interface DairyContextType {
     paymentMethod: Payment['paymentMethod'];
     reference: string;
     notes?: string;
-  }) => Payment;
+  }) => Promise<Payment>;
 
   addExpense: (data: {
     category: Expense['category'];
@@ -139,9 +144,9 @@ interface DairyContextType {
     paymentMethod: Payment['paymentMethod'];
     paidTo: string;
     referenceNumber: string;
-  }) => Expense;
+  }) => Promise<Expense>;
 
-  addRawMaterialStock: (materialId: string, qty: number, reference: string, notes?: string) => void;
+  addRawMaterialStock: (materialId: string, qty: number, reference: string, notes?: string) => Promise<void>;
   addRawMaterialPurchase: (data: {
     materialId?: string;
     newMaterialName?: string;
@@ -152,7 +157,7 @@ interface DairyContextType {
     supplier?: string;
     reference?: string;
     notes?: string;
-  }) => void;
+  }) => Promise<void>;
   recordRawMaterialUsage: (data: {
     materialId: string;
     qty: number;
@@ -160,21 +165,38 @@ interface DairyContextType {
     batchNumber?: string;
     reference?: string;
     notes?: string;
-  }) => boolean;
-  updateUserStatus: (userId: string, status: 'active' | 'inactive') => void;
-  updateUserRole: (userId: string, role: InternalRole) => void;
-  registerRetailer: (data: { businessName: string; ownerName: string; mobile: string; address: string }) => Retailer;
+  }) => Promise<boolean>;
 
-  updateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  toggleExpiryRule: (ruleId: string) => void;
-  markNotificationRead: (id: string) => void;
-  markAllNotificationsRead: (recipientType: 'customer' | 'internal') => void;
+  updateUserStatus: (userId: string, status: 'active' | 'inactive') => Promise<void>;
+  updateUserRole: (userId: string, role: InternalRole) => Promise<void>;
+  registerRetailer: (data: { businessName: string; ownerName: string; mobile: string; address: string; password?: string }) => Promise<Retailer>;
+
+  updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  toggleExpiryRule: (ruleId: string) => Promise<void>;
+  markNotificationRead: (id: string) => Promise<void>;
+  markAllNotificationsRead: (recipientType: 'customer' | 'internal') => Promise<void>;
 
   // Toasts
   toasts: Toast[];
   addToast: (message: string, type?: Toast['type']) => void;
   removeToast: (id: string) => void;
 }
+
+const fallbackRetailer: Retailer = {
+  id: '70000000-0000-0000-0000-000000000001',
+  businessName: 'ABC Retailers',
+  ownerName: 'Ramesh Patil',
+  mobile: '9822012345',
+  email: 'abc.retailers@gmail.com',
+  address: 'Shop No. 4, Shivaji Chowk, Kothrud, Pune - 411038',
+  area: 'Pune West',
+  gstin: '27AABCU9603R1ZM',
+  creditLimit: 100000,
+  outstandingAmount: 28500,
+  paymentTerms: 'Net 15 Days',
+  status: 'active',
+  lastOrderDate: '2026-09-10',
+};
 
 const DairyContext = createContext<DairyContextType | undefined>(undefined);
 
@@ -189,31 +211,32 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
 
-  // Entities
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [batches, setBatches] = useState<Batch[]>(INITIAL_BATCHES);
-  const [retailers, setRetailers] = useState<Retailer[]>(INITIAL_RETAILERS);
-  const [currentRetailer, setCurrentRetailer] = useState<Retailer>(INITIAL_RETAILERS[0]);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
-  const [invoices, setInvoices] = useState<Invoice[]>(INITIAL_INVOICES);
-  const [payments, setPayments] = useState<Payment[]>(INITIAL_PAYMENTS);
-  const [ledger, setLedger] = useState<LedgerEntry[]>(INITIAL_LEDGER);
-  const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
-  const [stockMovements, setStockMovements] = useState<StockMovement[]>(INITIAL_STOCK_MOVEMENTS);
-  const [expiryAlerts, setExpiryAlerts] = useState<ExpiryAlertItem[]>(INITIAL_EXPIRY_ALERTS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [expiryRules, setExpiryRules] = useState<ExpiryRule[]>(INITIAL_EXPIRY_RULES);
-  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>(INITIAL_RAW_MATERIALS);
-  const [rawMaterialMovements, setRawMaterialMovements] = useState<RawMaterialMovement[]>(INITIAL_RAW_MATERIAL_MOVEMENTS);
-  const [users, setUsers] = useState<User[]>(INITIAL_USERS);
-  const [rolePermissions] = useState<RolePermission[]>(INITIAL_ROLE_PERMISSIONS);
+  // Auth User & Profile
+  const [currentUser, setCurrentUser] = useState<UserSessionProfile | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Entities initialized from Supabase
+  const [products, setProducts] = useState<Product[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
+  const [retailers, setRetailers] = useState<Retailer[]>([]);
+  const [currentRetailer, setCurrentRetailer] = useState<Retailer>(fallbackRetailer);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [stockMovements, setStockMovements] = useState<StockMovement[]>([]);
+  const [expiryAlerts, setExpiryAlerts] = useState<ExpiryAlertItem[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [expiryRules, setExpiryRules] = useState<ExpiryRule[]>([]);
+  const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
+  const [rawMaterialMovements, setRawMaterialMovements] = useState<RawMaterialMovement[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
 
   // Customer Cart
-  const [cart, setCart] = useState<CartItem[]>([
-    { product: INITIAL_PRODUCTS[0], quantity: 2 }, // Basundi 2
-    { product: INITIAL_PRODUCTS[1], quantity: 1 }, // Pedha 1
-    { product: INITIAL_PRODUCTS[2], quantity: 3 }, // Shrikhand 3
-  ]);
+  const [cart, setCart] = useState<CartItem[]>([]);
 
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -228,6 +251,159 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
+  };
+
+  // Primary Data Loading from Supabase
+  const refreshData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      // Load products & categories
+      const prods = await productService.fetchProducts();
+      setProducts(prods);
+
+      // Load retailers
+      const custs = await customerService.fetchCustomers();
+      setRetailers(custs);
+      if (custs.length > 0) {
+        setCurrentRetailer(custs[0]);
+      }
+
+      // Load orders
+      const ords = await orderService.fetchOrders();
+      setOrders(ords);
+
+      // Load invoices
+      const invs = await invoiceService.fetchInvoices();
+      setInvoices(invs);
+
+      // Load payments
+      const pays = await paymentService.fetchPayments();
+      setPayments(pays);
+
+      // Load ledger
+      const ledg = await ledgerService.fetchLedger();
+      setLedger(ledg);
+
+      // Load inventory & batches
+      const bts = await inventoryService.fetchBatches();
+      setBatches(bts);
+
+      const movs = await inventoryService.fetchStockMovements();
+      setStockMovements(movs);
+
+      // Load raw materials
+      const rms = await rawMaterialService.fetchRawMaterials();
+      setRawMaterials(rms);
+
+      const rmMovs = await rawMaterialService.fetchRawMaterialMovements();
+      setRawMaterialMovements(rmMovs);
+
+      // Load expenses
+      const exps = await expenseService.fetchExpenses();
+      setExpenses(exps);
+
+      // Load expiry radar
+      const expR = await expiryService.fetchExpiryRules();
+      setExpiryRules(expR);
+
+      const expA = await expiryService.fetchExpiryAlerts();
+      setExpiryAlerts(expA);
+
+      // Load notifications
+      const notifs = await notificationService.fetchNotifications();
+      setNotifications(notifs);
+
+      // Load users & roles
+      const usrs = await userService.fetchUsers();
+      setUsers(usrs);
+
+      const rPerms = await userService.fetchRolePermissions();
+      setRolePermissions(rPerms);
+
+    } catch (err: any) {
+      console.error('Error fetching Supabase data:', err);
+      setError(err.message || 'Failed to load data from Supabase');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Restore Supabase Auth session on component mount
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const session = await authService.getSession();
+        if (session?.user) {
+          const profile = await authService.getUserProfile(session.user.id);
+          if (profile) {
+            setCurrentUser(profile);
+            if (profile.userType === 'customer') {
+              setPortal('customer');
+            } else {
+              setPortal('internal');
+              setInternalRole(profile.role as InternalRole);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Session restoration error:', e);
+      } finally {
+        await refreshData();
+      }
+    };
+
+    initAuth();
+
+    // Listen to Supabase auth state change
+    const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        const profile = await authService.getUserProfile(session.user.id);
+        setCurrentUser(profile);
+        if (profile) {
+          if (profile.userType === 'customer') {
+            setPortal('customer');
+          } else {
+            setPortal('internal');
+            setInternalRole(profile.role as InternalRole);
+          }
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setPortal('customer_login');
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [refreshData]);
+
+  // Auth actions
+  const login = async (email: string, pass: string): Promise<UserSessionProfile> => {
+    const profile = await authService.signIn(email, pass);
+    setCurrentUser(profile);
+    if (profile.userType === 'customer') {
+      setPortal('customer');
+      if (profile.customerId) {
+        const matched = retailers.find(r => r.id === profile.customerId);
+        if (matched) setCurrentRetailer(matched);
+      }
+    } else {
+      setPortal('internal');
+      setInternalRole(profile.role as InternalRole);
+    }
+    await refreshData();
+    addToast(`Welcome, ${profile.fullName}!`, 'success');
+    return profile;
+  };
+
+  const logout = async () => {
+    await authService.signOut();
+    setCurrentUser(null);
+    setPortal('customer_login');
+    addToast('Logged out successfully', 'info');
   };
 
   // Cart operations
@@ -279,63 +455,43 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [cart]);
 
   // Place order
-  const placeOrder = (notes?: string): Order => {
-    const newOrderNum = `#MD${1030 + orders.length}`;
-    const orderItems = cart.map(item => {
-      // Find matching batch
-      const activeBatch = batches.find(b => b.productId === item.product.id && b.availableQty > 0) || batches[0];
-      return {
-        productId: item.product.id,
-        productName: item.product.name,
-        batchNumber: activeBatch ? activeBatch.batchNumber : 'GEN-01',
-        unit: item.product.unit,
-        quantity: item.quantity,
-        unitPrice: item.product.defaultPrice,
-        totalPrice: item.quantity * item.product.defaultPrice,
-      };
-    });
+  const placeOrder = async (notes?: string): Promise<Order> => {
+    if (cart.length === 0) {
+      throw new Error('Cart is empty');
+    }
 
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      orderNumber: newOrderNum,
-      retailerId: currentRetailer.id,
-      retailerName: currentRetailer.businessName,
-      orderDate: new Date().toISOString().split('T')[0],
-      deliveryDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
-      status: 'confirmed',
-      items: orderItems,
-      totalAmount: cartTotal,
-      paymentStatus: 'unpaid',
-      notes: notes || 'Booked via Customer Retailer Portal',
-    };
+    try {
+      const newOrder = await orderService.createOrder({
+        customerId: currentRetailer.id,
+        items: cart.map(i => ({
+          productId: i.product.id,
+          productName: i.product.name,
+          quantity: i.quantity,
+          unitPrice: i.product.defaultPrice,
+        })),
+        notes: notes || 'Booked via Customer Retailer Portal',
+        deliveryDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+      });
 
-    setOrders(prev => [newOrder, ...prev]);
-    clearCart();
+      setOrders(prev => [newOrder, ...prev]);
+      clearCart();
 
-    // Add customer & internal notification
-    const newNotif: NotificationItem = {
-      id: `notif-${Date.now()}`,
-      date: 'Just now',
-      timeGroup: 'today',
-      recipientType: 'customer',
-      recipientId: currentRetailer.id,
-      title: `Order Placed Successfully ${newOrderNum}`,
-      message: `Your order for ${orderItems.length} products worth ₹${cartTotal.toLocaleString('en-IN')} has been placed.`,
-      type: 'order',
-      channel: 'in_app',
-      read: false,
-    };
-    setNotifications(prev => [newNotif, ...prev]);
+      // Refresh notifications & orders
+      const latestNotifs = await notificationService.fetchNotifications();
+      setNotifications(latestNotifs);
 
-    addToast(`Order ${newOrderNum} placed successfully!`, 'success');
-    return newOrder;
+      addToast(`Order ${newOrder.orderNumber} placed successfully!`, 'success');
+      return newOrder;
+    } catch (err: any) {
+      addToast(`Failed to place order: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   const reorder = (orderId: string) => {
     const prevOrder = orders.find(o => o.id === orderId);
     if (!prevOrder) return;
 
-    // Add items from prevOrder to cart
     prevOrder.items.forEach(item => {
       const prod = products.find(p => p.id === item.productId);
       if (prod) {
@@ -347,70 +503,30 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Create Production Batch
-  const createProductionBatch = ({
-    productId,
-    producedQty,
-    productionDate,
-    expiryDate,
-    notes,
-  }: {
+  const createProductionBatch = async (data: {
     productId: string;
     producedQty: number;
     productionDate: string;
     expiryDate: string;
     notes?: string;
-  }): Batch => {
-    const prod = products.find(p => p.id === productId) || products[0];
-    const cleanDate = productionDate.replace(/-/g, '').slice(2);
-    const prefix = prod.name.charAt(0).toUpperCase();
-    const batchNumber = `${prefix}${cleanDate}${Math.floor(10 + Math.random() * 89)}`;
+  }): Promise<Batch> => {
+    try {
+      const newBatch = await inventoryService.createBatch(data);
+      setBatches(prev => [newBatch, ...prev]);
 
-    const newBatch: Batch = {
-      id: `batch-${Date.now()}`,
-      batchNumber,
-      productId: prod.id,
-      productName: prod.name,
-      unit: prod.unit,
-      productionDate,
-      expiryDate,
-      producedQty,
-      soldQty: 0,
-      returnedQty: 0,
-      damagedQty: 0,
-      availableQty: producedQty,
-      status: 'active',
-      notes: notes || `Fresh production batch created for ${prod.name}`,
-    };
+      const movs = await inventoryService.fetchStockMovements();
+      setStockMovements(movs);
 
-    // Add batch
-    setBatches(prev => [newBatch, ...prev]);
-
-    // Add stock movement
-    const newMovement: StockMovement = {
-      id: `mov-${Date.now()}`,
-      date: productionDate,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      type: 'production',
-      productId: prod.id,
-      productName: prod.name,
-      batchNumber,
-      quantity: producedQty,
-      fromLocation: 'Dairy Production Unit',
-      toLocation: 'Finished Goods Cold Storage',
-      reference: `PROD-${Date.now().toString().slice(-4)}`,
-      user: 'Mahesh (Prod Mgr)',
-    };
-    setStockMovements(prev => [newMovement, ...prev]);
-
-    addToast(`Batch ${batchNumber} created with ${producedQty} units!`, 'success');
-    return newBatch;
+      addToast(`Batch ${newBatch.batchNumber} created with ${data.producedQty} units!`, 'success');
+      return newBatch;
+    } catch (err: any) {
+      addToast(`Error creating batch: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   // Create Invoice
-  const createInvoice = ({
-    retailerId,
-    items,
-  }: {
+  const createInvoice = async (data: {
     retailerId: string;
     items: {
       productId: string;
@@ -420,253 +536,95 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       taxPercent: number;
       discount?: number;
     }[];
-  }): Invoice => {
-    const ret = retailers.find(r => r.id === retailerId) || retailers[0];
-    const invoiceNumber = `INV-${1035 + invoices.length}`;
+  }): Promise<Invoice> => {
+    try {
+      const newInv = await invoiceService.createInvoice(data);
+      setInvoices(prev => [newInv, ...prev]);
 
-    let subtotal = 0;
-    let taxAmount = 0;
-    let discountAmount = 0;
+      // Refresh ledger & retailers
+      const updatedLedger = await ledgerService.fetchLedger();
+      setLedger(updatedLedger);
 
-    const invoiceItems = items.map(item => {
-      const prod = products.find(p => p.id === item.productId)!;
-      const lineSubtotal = item.quantity * item.rate;
-      const disc = item.discount || 0;
-      const taxable = lineSubtotal - disc;
-      const tax = (taxable * item.taxPercent) / 100;
-      subtotal += taxable;
-      taxAmount += tax;
-      discountAmount += disc;
+      const updatedRetailers = await customerService.fetchCustomers();
+      setRetailers(updatedRetailers);
 
-      // Update batch stock
-      setBatches(prev =>
-        prev.map(b => {
-          if (b.batchNumber === item.batchNumber) {
-            const newSold = b.soldQty + item.quantity;
-            const newAvail = Math.max(0, b.producedQty - newSold + b.returnedQty - b.damagedQty);
-            return {
-              ...b,
-              soldQty: newSold,
-              availableQty: newAvail,
-              status: newAvail === 0 ? 'exhausted' : b.status,
-            };
-          }
-          return b;
-        })
-      );
-
-      // Add movement
-      const mov: StockMovement = {
-        id: `mov-${Date.now()}-${Math.random()}`,
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        type: 'sale',
-        productId: prod.id,
-        productName: prod.name,
-        batchNumber: item.batchNumber,
-        quantity: -item.quantity,
-        fromLocation: 'Finished Goods Cold Storage',
-        toLocation: ret.businessName,
-        reference: invoiceNumber,
-        user: 'Deepak (Billing)',
-      };
-      setStockMovements(prev => [mov, ...prev]);
-
-      return {
-        productId: prod.id,
-        productName: prod.name,
-        batchNumber: item.batchNumber,
-        unit: prod.unit,
-        quantity: item.quantity,
-        rate: item.rate,
-        taxPercent: item.taxPercent,
-        discount: disc,
-        amount: Math.round((taxable + tax) * 100) / 100,
-      };
-    });
-
-    const totalAmount = Math.round((subtotal + taxAmount) * 100) / 100;
-
-    const newInv: Invoice = {
-      id: `inv-${Date.now()}`,
-      invoiceNumber,
-      retailerId: ret.id,
-      retailerName: ret.businessName,
-      retailerGstin: ret.gstin,
-      retailerAddress: ret.address,
-      date: new Date().toISOString().split('T')[0],
-      dueDate: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
-      items: invoiceItems,
-      subtotal,
-      taxAmount,
-      discountAmount,
-      totalAmount,
-      paidAmount: 0,
-      outstandingAmount: totalAmount,
-      status: 'unpaid',
-    };
-
-    setInvoices(prev => [newInv, ...prev]);
-
-    // Update retailer outstanding
-    setRetailers(prev =>
-      prev.map(r =>
-        r.id === ret.id ? { ...r, outstandingAmount: r.outstandingAmount + totalAmount, lastOrderDate: newInv.date } : r
-      )
-    );
-
-    // Add ledger entry
-    const newLedger: LedgerEntry = {
-      id: `led-${Date.now()}`,
-      date: newInv.date,
-      retailerId: ret.id,
-      particular: `${invoiceNumber} (Sale of Dairy Goods)`,
-      debit: totalAmount,
-      credit: undefined,
-      balance: ret.outstandingAmount + totalAmount,
-      reference: invoiceNumber,
-    };
-    setLedger(prev => [...prev, newLedger]);
-
-    addToast(`Invoice ${invoiceNumber} created for ₹${totalAmount.toLocaleString('en-IN')}`, 'success');
-    return newInv;
+      addToast(`Invoice ${newInv.invoiceNumber} generated!`, 'success');
+      return newInv;
+    } catch (err: any) {
+      addToast(`Error generating invoice: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
-  // Record payment
-  const recordPayment = ({
-    retailerId,
-    invoiceNumber,
-    amount,
-    paymentMethod,
-    reference,
-    notes,
-  }: {
+  // Record Payment
+  const recordPayment = async (data: {
     retailerId: string;
     invoiceNumber: string;
     amount: number;
     paymentMethod: Payment['paymentMethod'];
     reference: string;
     notes?: string;
-  }): Payment => {
-    const ret = retailers.find(r => r.id === retailerId) || retailers[0];
-    const paymentNumber = `PAY-${1085 + payments.length}`;
+  }): Promise<Payment> => {
+    try {
+      const newPay = await paymentService.recordPayment(data);
+      setPayments(prev => [newPay, ...prev]);
 
-    const newPay: Payment = {
-      id: `pay-${Date.now()}`,
-      paymentNumber,
-      date: new Date().toISOString().split('T')[0],
-      retailerId: ret.id,
-      retailerName: ret.businessName,
-      invoiceNumber,
-      amount,
-      paymentMethod,
-      reference,
-      notes,
-      recordedBy: 'Sneha (Accountant)',
-    };
+      // Refresh invoices, ledger, and customer balances
+      const [updatedInvs, updatedLedger, updatedRetailers] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        ledgerService.fetchLedger(),
+        customerService.fetchCustomers(),
+      ]);
 
-    setPayments(prev => [newPay, ...prev]);
+      setInvoices(updatedInvs);
+      setLedger(updatedLedger);
+      setRetailers(updatedRetailers);
 
-    // Update invoice if matched
-    setInvoices(prev =>
-      prev.map(inv => {
-        if (inv.invoiceNumber === invoiceNumber) {
-          const newPaid = inv.paidAmount + amount;
-          const newOut = Math.max(0, inv.totalAmount - newPaid);
-          return {
-            ...inv,
-            paidAmount: newPaid,
-            outstandingAmount: newOut,
-            status: newOut === 0 ? 'paid' : 'partial',
-          };
-        }
-        return inv;
-      })
-    );
-
-    // Update retailer balance
-    const updatedBalance = Math.max(0, ret.outstandingAmount - amount);
-    setRetailers(prev =>
-      prev.map(r => (r.id === ret.id ? { ...r, outstandingAmount: updatedBalance } : r))
-    );
-
-    // Add ledger credit
-    const newLedger: LedgerEntry = {
-      id: `led-${Date.now()}`,
-      date: newPay.date,
-      retailerId: ret.id,
-      particular: `Payment Received via ${paymentMethod.toUpperCase()} (${reference})`,
-      debit: undefined,
-      credit: amount,
-      balance: updatedBalance,
-      reference: paymentNumber,
-    };
-    setLedger(prev => [...prev, newLedger]);
-
-    addToast(`Recorded payment ${paymentNumber} of ₹${amount.toLocaleString('en-IN')}`, 'success');
-    return newPay;
+      addToast(`Payment of ₹${data.amount.toLocaleString('en-IN')} recorded!`, 'success');
+      return newPay;
+    } catch (err: any) {
+      addToast(`Error recording payment: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
   // Add Expense
-  const addExpense = ({
-    category,
-    description,
-    amount,
-    paymentMethod,
-    paidTo,
-    referenceNumber,
-  }: {
+  const addExpense = async (data: {
     category: Expense['category'];
     description: string;
     amount: number;
     paymentMethod: Payment['paymentMethod'];
     paidTo: string;
     referenceNumber: string;
-  }): Expense => {
-    const newExp: Expense = {
-      id: `exp-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      category,
-      description,
-      amount,
-      paymentMethod,
-      paidTo,
-      referenceNumber,
-    };
-
-    setExpenses(prev => [newExp, ...prev]);
-    addToast(`Expense recorded: ₹${amount.toLocaleString('en-IN')} for ${category}`, 'info');
-    return newExp;
+  }): Promise<Expense> => {
+    try {
+      const newExp = await expenseService.addExpense(data);
+      setExpenses(prev => [newExp, ...prev]);
+      addToast(`Expense entry recorded!`, 'success');
+      return newExp;
+    } catch (err: any) {
+      addToast(`Error recording expense: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
-  const updateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(prev =>
-      prev.map(o => (o.id === orderId ? { ...o, status } : o))
-    );
-    addToast(`Order status updated to ${status.toUpperCase()}`, 'info');
+  // Raw Materials
+  const addRawMaterialStock = async (materialId: string, qty: number, reference: string, notes?: string) => {
+    try {
+      await rawMaterialService.addRawMaterialStock(materialId, qty, reference, notes);
+      const [rms, rmMovs] = await Promise.all([
+        rawMaterialService.fetchRawMaterials(),
+        rawMaterialService.fetchRawMaterialMovements(),
+      ]);
+      setRawMaterials(rms);
+      setRawMaterialMovements(rmMovs);
+      addToast(`Raw material stock updated successfully!`, 'success');
+    } catch (err: any) {
+      addToast(`Error updating material stock: ${err.message}`, 'error');
+    }
   };
 
-  const toggleExpiryRule = (ruleId: string) => {
-    setExpiryRules(prev =>
-      prev.map(r => (r.id === ruleId ? { ...r, enabled: !r.enabled } : r))
-    );
-    addToast('Notification rule updated', 'info');
-  };
-
-  const markNotificationRead = (id: string) => {
-    setNotifications(prev =>
-      prev.map(n => (n.id === id ? { ...n, read: true } : n))
-    );
-  };
-
-  const markAllNotificationsRead = (recipientType: 'customer' | 'internal') => {
-    setNotifications(prev =>
-      prev.map(n => (n.recipientType === recipientType ? { ...n, read: true } : n))
-    );
-    addToast('All notifications marked as read', 'info');
-  };
-
-  const addRawMaterialPurchase = (data: {
+  const addRawMaterialPurchase = async (data: {
     materialId?: string;
     newMaterialName?: string;
     category?: string;
@@ -677,155 +635,113 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     reference?: string;
     notes?: string;
   }) => {
-    let matId = data.materialId;
-    let matName = '';
-    let matUnit = data.unit || 'Units';
-
-    if (data.materialId) {
-      const existing = rawMaterials.find(m => m.id === data.materialId);
-      if (existing) {
-        matName = existing.name;
-        matUnit = existing.unit;
-        const newStock = existing.currentStock + data.qty;
-        const newStatus = newStock <= 0 ? 'out_of_stock' : newStock <= existing.minStockThreshold ? 'low_stock' : 'healthy';
-
-        setRawMaterials(prev => prev.map(m => m.id === data.materialId ? {
-          ...m,
-          currentStock: newStock,
-          status: newStatus,
-          costPerUnit: data.costPerUnit !== undefined && data.costPerUnit > 0 ? data.costPerUnit : m.costPerUnit,
-          supplier: data.supplier ? data.supplier : m.supplier,
-          lastRestockedDate: new Date().toISOString().split('T')[0]
-        } : m));
-      }
-    } else if (data.newMaterialName) {
-      matId = `rm-${Date.now()}`;
-      matName = data.newMaterialName;
-      const newMat: RawMaterial = {
-        id: matId,
-        name: data.newMaterialName,
-        category: data.category || 'Dairy Inward',
-        unit: data.unit || 'Units',
-        currentStock: data.qty,
-        minStockThreshold: Math.max(10, Math.round(data.qty * 0.2)),
-        costPerUnit: data.costPerUnit || 0,
-        supplier: data.supplier || 'Farmer Co-op / Supplier',
-        status: 'healthy',
-        lastRestockedDate: new Date().toISOString().split('T')[0],
-      };
-      setRawMaterials(prev => [newMat, ...prev]);
-    }
-
-    if (matId) {
-      const ref = data.reference || `PO-${Date.now().toString().slice(-4)}`;
-      const newMovement: RawMaterialMovement = {
-        id: `rmm-${Date.now()}`,
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        materialId: matId,
-        materialName: matName,
-        type: 'purchase',
-        quantity: data.qty,
-        unit: matUnit,
-        reference: ref,
-        user: 'Warehouse Desk',
-        notes: data.notes || (data.supplier ? `Supplier: ${data.supplier}` : undefined),
-      };
-      setRawMaterialMovements(prev => [newMovement, ...prev]);
-      addToast(`Purchased ${data.qty} ${matUnit} of ${matName}`, 'success');
-    }
+    const matId = data.materialId || rawMaterials[0]?.id || '60000000-0000-0000-0000-000000000001';
+    await addRawMaterialStock(matId, data.qty, data.reference || 'PO-NEW', data.notes);
   };
 
-  const recordRawMaterialUsage = (data: {
+  const recordRawMaterialUsage = async (data: {
     materialId: string;
     qty: number;
     purpose?: string;
     batchNumber?: string;
     reference?: string;
     notes?: string;
-  }): boolean => {
-    const existing = rawMaterials.find(m => m.id === data.materialId);
-    if (!existing) {
-      addToast('Raw material not found', 'error');
+  }): Promise<boolean> => {
+    try {
+      await rawMaterialService.recordRawMaterialUsage(
+        data.materialId,
+        data.qty,
+        data.reference || (data.batchNumber ? `Batch ${data.batchNumber}` : 'USAGE'),
+        data.notes || data.purpose
+      );
+      const [rms, rmMovs] = await Promise.all([
+        rawMaterialService.fetchRawMaterials(),
+        rawMaterialService.fetchRawMaterialMovements(),
+      ]);
+      setRawMaterials(rms);
+      setRawMaterialMovements(rmMovs);
+      addToast(`Raw material consumption recorded!`, 'success');
+      return true;
+    } catch (err: any) {
+      addToast(`Error recording consumption: ${err.message}`, 'error');
       return false;
     }
-    if (data.qty <= 0) {
-      addToast('Please enter a valid quantity greater than 0', 'error');
-      return false;
+  };
+
+  // User & Roles
+  const updateUserStatus = async (userId: string, status: 'active' | 'inactive') => {
+    try {
+      await userService.updateUserStatus(userId, status);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
+      addToast(`User status updated to ${status}`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to update status: ${err.message}`, 'error');
     }
-    if (data.qty > existing.currentStock) {
-      addToast(`Insufficient stock! Only ${existing.currentStock} ${existing.unit} available.`, 'error');
-      return false;
+  };
+
+  const updateUserRole = async (userId: string, role: InternalRole) => {
+    try {
+      await userService.updateUserRole(userId, role);
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
+      addToast(`User role updated to ${role}`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to update role: ${err.message}`, 'error');
     }
-
-    const newStock = existing.currentStock - data.qty;
-    const newStatus = newStock <= 0 ? 'out_of_stock' : newStock <= existing.minStockThreshold ? 'low_stock' : 'healthy';
-
-    setRawMaterials(prev => prev.map(m => m.id === data.materialId ? {
-      ...m,
-      currentStock: newStock,
-      status: newStatus,
-    } : m));
-
-    const noteDetails = [
-      data.purpose ? `Purpose: ${data.purpose}` : '',
-      data.batchNumber ? `Batch: ${data.batchNumber}` : '',
-      data.notes ? data.notes : '',
-    ].filter(Boolean).join(' | ');
-
-    const newMovement: RawMaterialMovement = {
-      id: `rmm-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      materialId: data.materialId,
-      materialName: existing.name,
-      type: 'production_consumption',
-      quantity: -data.qty,
-      unit: existing.unit,
-      reference: data.reference || data.batchNumber || `USE-${Date.now().toString().slice(-4)}`,
-      user: 'Production Supervisor',
-      notes: noteDetails || 'Consumed in dairy processing',
-    };
-
-    setRawMaterialMovements(prev => [newMovement, ...prev]);
-    addToast(`Recorded usage: ${data.qty} ${existing.unit} of ${existing.name}`, 'info');
-    return true;
   };
 
-  const addRawMaterialStock = (materialId: string, qty: number, reference: string, notes?: string) => {
-    addRawMaterialPurchase({ materialId, qty, reference, notes });
+  // Customer Registration
+  const registerRetailer = async (data: {
+    businessName: string;
+    ownerName: string;
+    mobile: string;
+    address: string;
+    password?: string;
+  }): Promise<Retailer> => {
+    try {
+      const newRet = await customerService.registerCustomer(data);
+      setRetailers(prev => [...prev, newRet]);
+      setCurrentRetailer(newRet);
+      addToast(`Retailer account for ${newRet.businessName} registered!`, 'success');
+      return newRet;
+    } catch (err: any) {
+      addToast(`Registration failed: ${err.message}`, 'error');
+      throw err;
+    }
   };
 
-  const updateUserStatus = (userId: string, status: 'active' | 'inactive') => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
-    addToast(`User status updated to ${status}`, 'info');
+  // Order status
+  const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    try {
+      await orderService.updateOrderStatus(orderId, status);
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+      addToast(`Order status updated to ${status}`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to update order: ${err.message}`, 'error');
+    }
   };
 
-  const updateUserRole = (userId: string, role: InternalRole) => {
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
-    addToast(`User role updated to ${role.replace('_', ' ')}`, 'info');
+  // Expiry rule toggle
+  const toggleExpiryRule = async (ruleId: string) => {
+    const r = expiryRules.find(x => x.id === ruleId);
+    if (!r) return;
+    try {
+      await expiryService.toggleExpiryRule(ruleId, r.enabled);
+      setExpiryRules(prev => prev.map(x => x.id === ruleId ? { ...x, enabled: !x.enabled } : x));
+      addToast(`Expiry rule updated`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update rule: ${err.message}`, 'error');
+    }
   };
 
-  const registerRetailer = (data: { businessName: string; ownerName: string; mobile: string; address: string }): Retailer => {
-    const newRet: Retailer = {
-      id: `ret-${Date.now()}`,
-      businessName: data.businessName,
-      ownerName: data.ownerName,
-      mobile: data.mobile,
-      email: `${data.businessName.toLowerCase().replace(/[^a-z0-9]/g, '')}@gmail.com`,
-      address: data.address,
-      area: 'Local Distribution Zone',
-      gstin: `27AA${Math.floor(1000000000 + Math.random() * 9000000000)}1Z5`,
-      creditLimit: 25000,
-      outstandingAmount: 0,
-      paymentTerms: 'Net 7 Days',
-      status: 'active',
-      lastOrderDate: new Date().toISOString().split('T')[0],
-    };
-    setRetailers(prev => [...prev, newRet]);
-    setCurrentRetailer(newRet);
-    addToast(`Shop "${data.businessName}" registered successfully!`, 'success');
-    return newRet;
+  // Notifications
+  const markNotificationRead = async (id: string) => {
+    await notificationService.markAsRead(id);
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const markAllNotificationsRead = async () => {
+    await notificationService.markAllAsRead();
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
   return (
@@ -847,6 +763,13 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSelectedOrderId,
         selectedInvoiceId,
         setSelectedInvoiceId,
+
+        currentUser,
+        login,
+        logout,
+        isLoading,
+        error,
+        refreshData,
 
         currentRetailer,
         setCurrentRetailer,

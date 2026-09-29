@@ -144,7 +144,7 @@ export const RawMaterialsView: React.FC = () => {
   };
 
   // Handle Usage Submit
-  const handleUsageSubmit = (e: React.FormEvent) => {
+  const handleUsageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!usageMaterialId || usageQty <= 0) return;
     const target = rawMaterials.find(m => m.id === usageMaterialId);
@@ -155,7 +155,7 @@ export const RawMaterialsView: React.FC = () => {
       return;
     }
 
-    const success = recordRawMaterialUsage({
+    const success = await recordRawMaterialUsage({
       materialId: usageMaterialId,
       qty: Number(usageQty),
       purpose: usagePurpose,

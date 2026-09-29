@@ -8,12 +8,13 @@ import { Input } from '../ui/Input';
 import { Milk, ArrowRight, ShieldCheck, Phone, Lock, Sparkles, Store } from 'lucide-react';
 
 export const CustomerLogin: React.FC = () => {
-  const { setPortal, setCurrentRetailer, retailers, addToast } = useDairy();
+  const { setPortal, setCurrentRetailer, retailers, login, addToast } = useDairy();
   const { t } = useTranslation();
 
   const [isRegistering, setIsRegistering] = useState(false);
   const [mobile, setMobile] = useState('9822012345');
-  const [password, setPassword] = useState('password123');
+  const [password, setPassword] = useState('Password@123');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   if (isRegistering) {
     return (
@@ -24,24 +25,39 @@ export const CustomerLogin: React.FC = () => {
     );
   }
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mobile) {
-      addToast('Please enter mobile number', 'warning');
+      addToast('Please enter mobile number or email', 'warning');
       return;
     }
-    const matched = retailers.find(r => r.mobile === mobile) || retailers[0];
-    setCurrentRetailer(matched);
-    setPortal('customer');
-    addToast(`Welcome, ${matched.businessName}!`, 'success');
+    setIsLoggingIn(true);
+    try {
+      const matched = retailers.find(r => r.mobile === mobile || r.email === mobile);
+      const email = matched?.email || (mobile.includes('@') ? mobile : 'abc.retailers@gmail.com');
+      await login(email, password || 'Password@123');
+      if (matched) setCurrentRetailer(matched);
+    } catch (err: any) {
+      addToast(err.message || 'Login failed', 'error');
+    } finally {
+      setIsLoggingIn(false);
+    }
   };
 
-  const handleQuickSelect = (retId: string) => {
+  const handleQuickSelect = async (retId: string) => {
     const selected = retailers.find(r => r.id === retId);
     if (selected) {
       setMobile(selected.mobile);
-      setPassword('password123');
+      setPassword('Password@123');
       setCurrentRetailer(selected);
+      setIsLoggingIn(true);
+      try {
+        await login(selected.email || 'abc.retailers@gmail.com', 'Password@123');
+      } catch (err: any) {
+        addToast(err.message || 'Login failed', 'error');
+      } finally {
+        setIsLoggingIn(false);
+      }
     }
   };
 
@@ -124,6 +140,7 @@ export const CustomerLogin: React.FC = () => {
                 variant="primary"
                 size="lg"
                 className="w-full"
+                isLoading={isLoggingIn}
               >
                 {t.customer.auth.loginButton}
               </Button>

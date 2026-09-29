@@ -33,14 +33,17 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
   const deliveryCharge = 0; // Free delivery for registered retailers
   const grandTotal = subtotal + deliveryCharge;
 
-  const handleConfirmOrder = () => {
+  const handleConfirmOrder = async () => {
     setIsSubmitting(true);
-    setTimeout(() => {
-      const newOrder = placeOrder(orderNotes);
+    try {
+      const newOrder = await placeOrder(orderNotes);
       setPlacedOrder(newOrder);
       setIsConfirmModalOpen(false);
+    } catch {
+      // Toast displayed by placeOrder
+    } finally {
       setIsSubmitting(false);
-    }, 300);
+    }
   };
 
   // 1. Order Placed Success Confirmation (Section 35)
