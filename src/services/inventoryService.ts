@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { Batch, BatchStatus, StockMovement, MovementType } from '../types/dairy';
+import { generateBatchNumber } from '../utils/batchNumber';
+
+export { generateBatchNumber };
 
 export const inventoryService = {
   async fetchBatches(): Promise<Batch[]> {
@@ -117,11 +120,27 @@ export const inventoryService = {
     const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
     const prodName = (sku as any)?.products?.name || 'Dairy Product';
 
-    // Batch code: e.g. B + DDMM + YYYY
-    const d = new Date(params.productionDate);
-    const day = String(d.getDate()).padStart(2, '0');
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const batchNumber = `B${day}${month}${d.getFullYear()}`;
+    // Batch code formula: [MonthCode][DD][YYYY] (e.g. JA302026, June=JE, July=JY)
+    const baseBatchNumber = generateBatchNumber(params.productionDate);
+
+    // Check existing batches to prevent duplicate key collisions for multiple batches on same day
+    let batchNumber = baseBatchNumber;
+    const { data: existingBatches } = await supabase
+      .from('batches')
+      .select('batch_number')
+      .eq('organization_id', orgId)
+      .ilike('batch_number', `${baseBatchNumber}%`);
+
+    if (existingBatches && existingBatches.length > 0) {
+      const existingSet = new Set(existingBatches.map(b => b.batch_number.toUpperCase()));
+      if (existingSet.has(baseBatchNumber.toUpperCase())) {
+        let counter = 2;
+        while (existingSet.has(`${baseBatchNumber}-${String(counter).padStart(2, '0')}`)) {
+          counter++;
+        }
+        batchNumber = `${baseBatchNumber}-${String(counter).padStart(2, '0')}`;
+      }
+    }
 
     // 1. Insert batch
     const { data: newBatch, error: bErr } = await supabase

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { Modal } from '../common/Modal';
 import { Layers, Calendar, Package, Sparkles, Check, Hash } from 'lucide-react';
+import { generateBatchNumber } from '../../utils/batchNumber';
 
 interface CreateBatchModalProps {
   isOpen: boolean;
@@ -28,8 +29,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
     }
   }, [productId, productionDate, selectedProduct]);
 
-  const cleanDate = productionDate.replace(/-/g, '').slice(2);
-  const previewBatchNumber = `${(selectedProduct?.name?.charAt(0) || 'B').toUpperCase()}${cleanDate}01`;
+  const previewBatchNumber = generateBatchNumber(productionDate);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
