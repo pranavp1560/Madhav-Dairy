@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { Users, Search, Phone, MapPin, Eye, ArrowRight, CreditCard } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Eye, ArrowRight, CreditCard, UserPlus } from 'lucide-react';
+import { AddCustomerModal } from './AddCustomerModal';
 
 interface RetailersViewProps {
   onSelectRetailer: (id: string) => void;
@@ -13,6 +14,7 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
 }) => {
   const { retailers } = useDairy();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
 
   const filteredRetailers = retailers.filter(r =>
     r.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -37,13 +39,22 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
           </p>
         </div>
 
-        <button
-          onClick={onOpenRecordPayment}
-          className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
-        >
-          <CreditCard className="w-4 h-4" />
-          <span>Record Collection Payment</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsAddCustomerOpen(true)}
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Add Retail Customer</span>
+          </button>
+          <button
+            onClick={onOpenRecordPayment}
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+          >
+            <CreditCard className="w-4 h-4 text-slate-600" />
+            <span>Record Payment</span>
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -131,6 +142,12 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
           </table>
         </div>
       </div>
+
+      {/* Add Customer Modal */}
+      <AddCustomerModal
+        isOpen={isAddCustomerOpen}
+        onClose={() => setIsAddCustomerOpen(false)}
+      />
     </div>
   );
 };

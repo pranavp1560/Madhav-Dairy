@@ -60,18 +60,24 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
           <label className="block font-bold text-slate-700 mb-1">
             Dairy Product <span className="text-red-500">*</span>
           </label>
-          <select
-            value={productId}
-            onChange={e => setProductId(e.target.value)}
-            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
-            required
-          >
-            {products.map(p => (
-              <option key={p.id} value={p.id}>
-                {p.name} ({p.unit}) — Shelf Life: {p.shelfLifeDays} days
-              </option>
-            ))}
-          </select>
+          {products.length === 0 ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+              No products registered in catalog yet. Please add a product first from the Products screen.
+            </div>
+          ) : (
+            <select
+              value={productId}
+              onChange={e => setProductId(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
+              required
+            >
+              {products.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.unit}) — Shelf Life: {p.shelfLifeDays} days
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Quantity & Production Date */}
@@ -180,7 +186,8 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl shadow-xs flex items-center gap-1.5"
+            disabled={products.length === 0}
+            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />
             <span>Create Batch</span>

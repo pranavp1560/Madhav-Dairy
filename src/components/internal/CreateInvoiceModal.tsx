@@ -124,18 +124,24 @@ export const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
           <label className="block font-semibold text-slate-700 mb-1">
             Bill To Retailer / Customer <span className="text-red-500">*</span>
           </label>
-          <select
-            value={retailerId}
-            onChange={e => setRetailerId(e.target.value)}
-            className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-            required
-          >
-            {retailers.map(r => (
-              <option key={r.id} value={r.id}>
-                {r.businessName} ({r.area}) &bull; Outstanding: ₹{r.outstandingAmount.toLocaleString('en-IN')} &bull; GST: {r.gstin}
-              </option>
-            ))}
-          </select>
+          {retailers.length === 0 ? (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+              No registered customers found. Please add a customer first from the Retailers screen.
+            </div>
+          ) : (
+            <select
+              value={retailerId}
+              onChange={e => setRetailerId(e.target.value)}
+              className="w-full px-3 py-2.5 bg-slate-50/50 border border-slate-300 rounded-lg text-xs text-slate-800 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+              required
+            >
+              {retailers.map(r => (
+                <option key={r.id} value={r.id}>
+                  {r.businessName} ({r.area}) &bull; Outstanding: ₹{r.outstandingAmount.toLocaleString('en-IN')} &bull; GST: {r.gstin}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         {/* Item Rows Table with Batch Selection Prominence */}
@@ -298,7 +304,8 @@ export const CreateInvoiceModal: React.FC<CreateInvoiceModalProps> = ({
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-xs flex items-center gap-1.5"
+            disabled={retailers.length === 0 || products.length === 0}
+            className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-xs flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />
             <span>Create & Generate Invoice</span>

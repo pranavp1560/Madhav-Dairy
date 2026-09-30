@@ -16,6 +16,7 @@ import {
   IndianRupee,
   CheckCircle2
 } from 'lucide-react';
+import { AddProductModal } from './AddProductModal';
 
 export const ProductsAdminView: React.FC = () => {
   const { products, addToast } = useDairy();
@@ -24,6 +25,7 @@ export const ProductsAdminView: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<ProductCategory>('All');
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
 
   const categories: ProductCategory[] = [
     'All',
@@ -61,7 +63,7 @@ export const ProductsAdminView: React.FC = () => {
           variant="primary"
           size="sm"
           icon={<Plus className="w-4 h-4" />}
-          onClick={() => addToast('New product definition drawer (simulated)', 'info')}
+          onClick={() => setIsAddProductOpen(true)}
         >
           Add New Product
         </Button>
@@ -245,6 +247,12 @@ export const ProductsAdminView: React.FC = () => {
           </div>
         )}
       </Drawer>
+
+      {/* Add Product Modal */}
+      <AddProductModal
+        isOpen={isAddProductOpen}
+        onClose={() => setIsAddProductOpen(false)}
+      />
     </div>
   );
 };

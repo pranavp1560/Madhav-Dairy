@@ -108,6 +108,19 @@ interface DairyContextType {
   reorder: (orderId: string) => void;
 
   // Business Actions
+  addProduct: (data: {
+    name: string;
+    nameMr?: string;
+    nameHi?: string;
+    categoryName?: string;
+    packSize: string;
+    unit: string;
+    mrp: number;
+    sellingPrice: number;
+    shelfLifeDays: number;
+    description?: string;
+  }) => Promise<Product>;
+
   createProductionBatch: (data: {
     productId: string;
     producedQty: number;
@@ -502,6 +515,30 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     addToast(`Reordered items from ${prevOrder.orderNumber} added to cart!`, 'success');
   };
 
+  // Add Product to catalog
+  const addProduct = async (data: {
+    name: string;
+    nameMr?: string;
+    nameHi?: string;
+    categoryName?: string;
+    packSize: string;
+    unit: string;
+    mrp: number;
+    sellingPrice: number;
+    shelfLifeDays: number;
+    description?: string;
+  }): Promise<Product> => {
+    try {
+      const newProd = await productService.createProduct(data);
+      setProducts(prev => [...prev, newProd]);
+      addToast(`Product "${newProd.name}" added to catalog!`, 'success');
+      return newProd;
+    } catch (err: any) {
+      addToast(`Error adding product: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Create Production Batch
   const createProductionBatch = async (data: {
     productId: string;
@@ -801,6 +838,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         placeOrder,
         reorder,
 
+        addProduct,
         createProductionBatch,
         createInvoice,
         recordPayment,
