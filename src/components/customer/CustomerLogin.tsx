@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { LanguageSelector } from '../ui/LanguageSelector';
@@ -6,15 +6,22 @@ import { CustomerRegister } from './CustomerRegister';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Milk, ArrowRight, ShieldCheck, Phone, Lock, Sparkles, Store } from 'lucide-react';
+import { authService } from '../../services/authService';
 
 export const CustomerLogin: React.FC = () => {
   const { setPortal, setCurrentRetailer, retailers, login, addToast } = useDairy();
   const { t } = useTranslation();
 
   const [isRegistering, setIsRegistering] = useState(false);
-  const [mobile, setMobile] = useState('9822012345');
+  const [mobile, setMobile] = useState('');
   const [password, setPassword] = useState('Password@123');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  useEffect(() => {
+    if (retailers.length > 0 && !mobile) {
+      setMobile(retailers[0].mobile);
+    }
+  }, [retailers]);
 
   if (isRegistering) {
     return (
@@ -27,18 +34,54 @@ export const CustomerLogin: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!mobile) {
-      addToast('Please enter mobile number or email', 'warning');
+    const trimmedInput = mobile.trim();
+    if (!trimmedInput) {
+      addToast('Please enter your mobile number or email', 'warning');
       return;
     }
     setIsLoggingIn(true);
     try {
-      const matched = retailers.find(r => r.mobile === mobile || r.email === mobile);
-      const email = matched?.email || (mobile.includes('@') ? mobile : 'abc.retailers@gmail.com');
-      await login(email, password || 'Password@123');
-      if (matched) setCurrentRetailer(matched);
+      const cleanDigits = trimmedInput.replace(/\D/g, '');
+      const isEmail = trimmedInput.includes('@');
+
+      // Match against known customer records
+      const matched = retailers.find(r =>
+        (cleanDigits && r.mobile.replace(/\D/g, '') === cleanDigits) ||
+        r.mobile === trimmedInput ||
+        r.email?.toLowerCase() === trimmedInput.toLowerCase()
+      );
+
+      // Determine Supabase Auth email
+      const authEmail = isEmail
+        ? trimmedInput.toLowerCase()
+        : (matched?.email || `retailer.${cleanDigits || trimmedInput}@madhavdairy.com`);
+
+      const pass = password || 'Password@123';
+
+      try {
+        await login(authEmail, pass);
+      } catch (loginErr: any) {
+        // If login failed because auth user was not yet created for this customer, auto-provision and retry
+        if (matched && (loginErr.message?.includes('Invalid login') || loginErr.message?.includes('credentials'))) {
+          try {
+            await authService.signUp(authEmail, pass, matched.ownerName, cleanDigits || matched.mobile, 'customer', {
+              businessName: matched.businessName,
+              address: matched.address,
+            });
+            await login(authEmail, pass);
+          } catch {
+            throw loginErr;
+          }
+        } else {
+          throw loginErr;
+        }
+      }
+
+      if (matched) {
+        setCurrentRetailer(matched);
+      }
     } catch (err: any) {
-      addToast(err.message || 'Login failed', 'error');
+      addToast(err.message || 'Login failed. Please check your credentials.', 'error');
     } finally {
       setIsLoggingIn(false);
     }
@@ -47,12 +90,26 @@ export const CustomerLogin: React.FC = () => {
   const handleQuickSelect = async (retId: string) => {
     const selected = retailers.find(r => r.id === retId);
     if (selected) {
+      const cleanDigits = selected.mobile.replace(/\D/g, '');
+      const authEmail = selected.email || `retailer.${cleanDigits}@madhavdairy.com`;
       setMobile(selected.mobile);
       setPassword('Password@123');
       setCurrentRetailer(selected);
       setIsLoggingIn(true);
       try {
-        await login(selected.email || 'abc.retailers@gmail.com', 'Password@123');
+        try {
+          await login(authEmail, 'Password@123');
+        } catch (loginErr: any) {
+          if (loginErr.message?.includes('Invalid login') || loginErr.message?.includes('credentials')) {
+            await authService.signUp(authEmail, 'Password@123', selected.ownerName, cleanDigits, 'customer', {
+              businessName: selected.businessName,
+              address: selected.address,
+            });
+            await login(authEmail, 'Password@123');
+          } else {
+            throw loginErr;
+          }
+        }
       } catch (err: any) {
         addToast(err.message || 'Login failed', 'error');
       } finally {
@@ -90,27 +147,29 @@ export const CustomerLogin: React.FC = () => {
           </div>
 
           {/* Quick Demo Retailers for Presentation Convenience */}
-          <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-              Demo Retailer Accounts:
-            </span>
-            <div className="flex flex-wrap gap-1">
-              {retailers.slice(0, 3).map(r => (
-                <button
-                  key={r.id}
-                  type="button"
-                  onClick={() => handleQuickSelect(r.id)}
-                  className={`text-[11px] px-2 py-1 rounded-md border transition-all ${
-                    mobile === r.mobile
-                      ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-xs'
-                      : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400'
-                  }`}
-                >
-                  {r.businessName}
-                </button>
-              ))}
+          {retailers.length > 0 && (
+            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs space-y-1.5">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                Registered Retailer Accounts:
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {retailers.slice(0, 3).map(r => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => handleQuickSelect(r.id)}
+                    className={`text-[11px] px-2 py-1 rounded-md border transition-all ${
+                      mobile === r.mobile
+                        ? 'bg-blue-600 text-white border-blue-600 font-semibold shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400'
+                    }`}
+                  >
+                    {r.businessName}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-3 text-xs">
             <Input

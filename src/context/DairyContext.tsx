@@ -735,10 +735,28 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     password?: string;
   }): Promise<Retailer> => {
     try {
-      const newRet = await customerService.registerCustomer(data);
+      const cleanMobile = data.mobile.replace(/\D/g, '');
+      const authEmail = `retailer.${cleanMobile}@madhavdairy.com`;
+      const pass = data.password || 'Password@123';
+
+      const newRet = await customerService.registerCustomer({
+        ...data,
+        email: authEmail,
+      });
+
+      // Provision auth account in background so retailer can log in immediately
+      try {
+        await authService.signUp(authEmail, pass, data.ownerName, cleanMobile, 'customer', {
+          businessName: data.businessName,
+          address: data.address,
+        });
+      } catch (authErr) {
+        console.warn('Customer auth provision note:', authErr);
+      }
+
       setRetailers(prev => [...prev, newRet]);
       setCurrentRetailer(newRet);
-      addToast(`Retailer account for ${newRet.businessName} registered!`, 'success');
+      addToast(`Retailer account for "${newRet.businessName}" registered!`, 'success');
       return newRet;
     } catch (err: any) {
       addToast(`Registration failed: ${err.message}`, 'error');
