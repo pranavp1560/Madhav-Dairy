@@ -4,25 +4,29 @@
  * Pattern: [MonthCode][DD][YYYY]
  * - MonthCode: First 2 letters of English month name in uppercase.
  * - Explicit Exceptions:
- *     June -> JE
- *     July -> JY
+ *     March -> MH
+ *     May   -> MY
+ *     June  -> JE
+ *     July  -> JY
  * - DD: 2-digit zero-padded day (01-31).
  * - YYYY: 4-digit year.
  *
- * Example:
- * 30 January 2026 -> JA302026
- * 15 June 2026    -> JE152026
- * 04 July 2026    -> JY042026
+ * Examples:
+ * 30 January 2026  -> JA302026
+ * 15 March 2026    -> MH152026
+ * 10 May 2026      -> MY102026
+ * 15 June 2026     -> JE152026
+ * 04 July 2026     -> JY042026
  */
 
 export const MONTH_CODES: Record<number, string> = {
   1: 'JA',  // January
   2: 'FE',  // February
-  3: 'MA',  // March
+  3: 'MH',  // March (Explicit exception: MH)
   4: 'AP',  // April
-  5: 'MA',  // May
-  6: 'JE',  // June (Explicit exception)
-  7: 'JY',  // July (Explicit exception)
+  5: 'MY',  // May (Explicit exception: MY)
+  6: 'JE',  // June (Explicit exception: JE)
+  7: 'JY',  // July (Explicit exception: JY)
   8: 'AU',  // August
   9: 'SE',  // September
   10: 'OC', // October

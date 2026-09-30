@@ -120,7 +120,7 @@ export const inventoryService = {
     const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
     const prodName = (sku as any)?.products?.name || 'Dairy Product';
 
-    // Batch code formula: [MonthCode][DD][YYYY] (e.g. JA302026, June=JE, July=JY)
+    // Batch code formula: [MonthCode][DD][YYYY] (e.g. JA302026, March=MH, May=MY, June=JE, July=JY)
     const baseBatchNumber = generateBatchNumber(params.productionDate);
 
     // Check existing batches to prevent duplicate key collisions for multiple batches on same day
