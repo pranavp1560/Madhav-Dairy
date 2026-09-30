@@ -1,118 +1,95 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { InternalRole } from '../../types/dairy';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
-import { Shield, ArrowRight, ArrowLeft, KeyRound, UserCheck, Milk } from 'lucide-react';
+import { ForgotPasswordModal } from '../common/ForgotPasswordModal';
+import { Milk, ArrowLeft, Lock, Mail, ArrowRight, Shield } from 'lucide-react';
 
 export const InternalLogin: React.FC = () => {
   const { setPortal, login, addToast } = useDairy();
-  const [email, setEmail] = useState('madhav@madhavdairy.com');
-  const [password, setPassword] = useState('Password@123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
-
-  const demoRoles: { role: InternalRole; title: string; email: string; desc: string }[] = [
-    { role: 'admin', title: 'Owner / Admin', email: 'madhav@madhavdairy.com', desc: 'Full business & system access' },
-    { role: 'production_manager', title: 'Production Manager', email: 'suresh.deshmukh@madhavdairy.com', desc: 'Batches, processing, QC' },
-    { role: 'accountant', title: 'Accountant', email: 'sunil.kulkarni@madhavdairy.com', desc: 'Invoices, ledger, collections' },
-    { role: 'warehouse_manager', title: 'Warehouse / Stock Manager', email: 'vikram.shinde@madhavdairy.com', desc: 'Inventory & stock movements' },
-  ];
+  const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoggingIn(true);
-    try {
-      await login(email, password);
-    } catch (err: any) {
-      addToast(err.message || 'Login failed', 'error');
-    } finally {
-      setIsLoggingIn(false);
+    if (!email.trim() || !password) {
+      addToast('Please enter your work email and password', 'warning');
+      return;
     }
-  };
 
-  const handleSelectRole = async (role: InternalRole, userEmail: string) => {
-    setEmail(userEmail);
-    setPassword('Password@123');
     setIsLoggingIn(true);
     try {
-      await login(userEmail, 'Password@123');
+      await login(email.trim(), password);
     } catch (err: any) {
-      addToast(err.message || 'Login failed', 'error');
+      addToast(err.message || 'Invalid email or password. Please verify your credentials.', 'error');
     } finally {
       setIsLoggingIn(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-50 text-slate-900">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-100/70 text-slate-900 font-sans">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
-        {/* Header with Blue Badge */}
-        <div className="p-6 bg-slate-50/80 border-b border-slate-200 text-center relative">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-blue-100 text-blue-600 rounded-xl border border-blue-200/60 mb-2 shadow-xs">
-            <Milk className="w-7 h-7" />
+        {/* Header with Dairy ERP Brand */}
+        <div className="p-6 bg-slate-900 text-white text-center relative">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-white/10 text-white rounded-xl border border-white/20 mb-2 shadow-inner">
+            <Milk className="w-7 h-7 text-white" />
           </div>
-          <h1 className="text-xl font-bold text-slate-900 tracking-tight">Madhav Dairy ERP</h1>
-          <p className="text-xs text-blue-600 mt-0.5 uppercase tracking-wider font-semibold">
-            Internal Management System
+          <h1 className="text-xl font-bold tracking-tight">Madhav Dairy ERP</h1>
+          <p className="text-xs text-blue-200 mt-1 uppercase tracking-wider font-semibold">
+            Internal Staff & Management Portal
           </p>
         </div>
 
-        <div className="p-6 space-y-5">
-          {/* Role Quick Selector */}
+        <div className="p-6 sm:p-8 space-y-5">
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                Select Demo Role to Log In:
-              </span>
+            <h2 className="text-base font-bold text-slate-900">Sign In to Work Account</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Enter your authorized staff credentials to access operations
+            </p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">
+                Work Email Address
+              </label>
+              <div className="relative">
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="name@madhavdairy.com"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-colors"
+                />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              {demoRoles.map(item => (
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-700 font-semibold">Password</label>
                 <button
-                  key={item.role}
                   type="button"
-                  onClick={() => handleSelectRole(item.role, item.email)}
-                  className="p-3 text-left rounded-xl border border-slate-200 bg-slate-50/60 hover:bg-blue-50 hover:border-blue-300 transition-all group"
+                  onClick={() => setIsForgotModalOpen(true)}
+                  className="text-[11px] text-blue-600 hover:text-blue-800 font-medium transition-colors"
                 >
-                  <span className="text-xs font-bold text-slate-800 block group-hover:text-blue-600">
-                    {item.title}
-                  </span>
-                  <span className="text-[10px] text-slate-500 mt-0.5 line-clamp-1">
-                    {item.desc}
-                  </span>
+                  Forgot Password?
                 </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="relative flex py-1 items-center">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="flex-shrink mx-3 text-[10px] text-slate-400 uppercase font-bold">
-              or enter credentials
-            </span>
-            <div className="flex-grow border-t border-slate-200"></div>
-          </div>
-
-          <form onSubmit={handleLogin} className="space-y-3.5 text-xs">
-            <div>
-              <label className="block text-slate-700 font-medium mb-1">Work Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-colors"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-slate-700 font-medium mb-1">Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full p-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-colors"
-                required
-              />
+              </div>
+              <div className="relative">
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="Enter your account password"
+                  className="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-xs focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-colors"
+                />
+              </div>
             </div>
 
             <Button
@@ -121,23 +98,32 @@ export const InternalLogin: React.FC = () => {
               size="lg"
               className="w-full mt-2"
               isLoading={isLoggingIn}
+              icon={<ArrowRight className="w-4 h-4" />}
             >
-              Sign In to ERP Dashboard &rarr;
+              Sign In to ERP
             </Button>
           </form>
 
-          {/* Back to Customer Link */}
-          <div className="text-center pt-3 border-t border-slate-200">
+          {/* Clean entry navigation link back to customer portal login */}
+          <div className="text-center pt-4 border-t border-slate-100">
             <button
               onClick={() => setPortal('customer_login')}
-              className="text-xs text-slate-500 hover:text-blue-600 transition-colors inline-flex items-center gap-1"
+              className="text-xs text-slate-500 hover:text-blue-600 transition-colors inline-flex items-center gap-1.5 font-medium"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Retailer Customer Portal</span>
+              <span>Switch to Retailer Customer Login</span>
             </button>
           </div>
         </div>
       </div>
+
+      {/* Forgot Password Recovery Modal */}
+      <ForgotPasswordModal
+        isOpen={isForgotModalOpen}
+        onClose={() => setIsForgotModalOpen(false)}
+        defaultEmail={email}
+        portalType="internal"
+      />
     </div>
   );
 };

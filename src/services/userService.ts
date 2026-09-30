@@ -13,10 +13,14 @@ export const userService = {
         status,
         department_id,
         last_login_at,
-        user_roles(
-          roles(name)
+        created_at,
+        user_roles (
+          roles (
+            name
+          )
         )
       `)
+      .eq('user_type', 'internal')
       .order('full_name');
 
     if (error) throw error;
@@ -37,10 +41,6 @@ export const userService = {
   },
 
   async fetchRolePermissions(): Promise<RolePermission[]> {
-    const { data: perms } = await supabase
-      .from('permissions')
-      .select('module, action');
-
     const modules = [
       'Dashboard', 'Production', 'Batches', 'Finished Goods',
       'Raw Materials', 'Stock Movements', 'Orders', 'Invoices',
@@ -58,33 +58,85 @@ export const userService = {
     }));
   },
 
-  async updateUserStatus(userId: string, status: 'active' | 'inactive') {
-    const { error } = await supabase
-      .from('profiles')
-      .update({ status })
-      .eq('id', userId);
+  async createEmployee(data: {
+    fullName: string;
+    email: string;
+    mobile: string;
+    department: string;
+    role: InternalRole;
+    password: string;
+    status?: 'active' | 'inactive';
+  }): Promise<any> {
+    const { data: result, error } = await supabase.rpc('admin_create_employee', {
+      p_full_name: data.fullName.trim(),
+      p_email: data.email.trim().toLowerCase(),
+      p_mobile: data.mobile.trim(),
+      p_department: data.department.trim(),
+      p_role: data.role,
+      p_password: data.password,
+      p_status: data.status || 'active',
+    });
 
+    if (error) {
+      throw new Error(error.message || 'Failed to create employee');
+    }
+
+    return result;
+  },
+
+  async updateUserStatus(userId: string, status: 'active' | 'inactive'): Promise<void> {
+    const { error } = await supabase.rpc('admin_update_employee_status', {
+      p_user_id: userId,
+      p_status: status,
+    });
+
+    if (error) {
+      // Fallback direct update if RPC fails
+      const { error: directErr } = await supabase
+        .from('profiles')
+        .update({ status })
+        .eq('id', userId);
+      if (directErr) throw directErr;
+    }
+  },
+
+  async updateUserRole(userId: string, roleName: InternalRole): Promise<void> {
+    const { error } = await supabase.rpc('admin_update_employee_role', {
+      p_user_id: userId,
+      p_new_role: roleName,
+    });
+
+    if (error) {
+      // Fallback direct update
+      const { data: role } = await supabase
+        .from('roles')
+        .select('id')
+        .eq('name', roleName)
+        .maybeSingle();
+
+      if (!role) throw new Error(`Role ${roleName} not found`);
+
+      await supabase.from('user_roles').delete().eq('user_id', userId);
+      const { error: insErr } = await supabase.from('user_roles').insert({
+        user_id: userId,
+        role_id: role.id,
+      });
+      if (insErr) throw insErr;
+    }
+  },
+
+  async resetEmployeePassword(userId: string, newPassword: string): Promise<void> {
+    const { error } = await supabase.rpc('admin_reset_employee_password', {
+      p_user_id: userId,
+      p_new_password: newPassword,
+    });
     if (error) throw error;
   },
 
-  async updateUserRole(userId: string, roleName: InternalRole) {
-    const { data: role } = await supabase
-      .from('roles')
-      .select('id')
-      .eq('name', roleName)
-      .maybeSingle();
-
-    if (!role) throw new Error(`Role ${roleName} not found`);
-
-    // Delete existing roles for user
-    await supabase.from('user_roles').delete().eq('user_id', userId);
-
-    // Insert new role
-    const { error } = await supabase.from('user_roles').insert({
-      user_id: userId,
-      role_id: role.id,
+  async sendEmployeePasswordResetEmail(email: string): Promise<void> {
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+      redirectTo: window.location.origin,
     });
-
     if (error) throw error;
   }
 };

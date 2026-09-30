@@ -21,7 +21,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
   };
 
   const handleDownload = () => {
-    addToast(`Tax Invoice ${invoice.invoiceNumber} downloaded as PDF (simulated)`, 'success');
+    window.print();
+    addToast(`Tax Invoice ${invoice.invoiceNumber} ready for export`, 'success');
   };
 
   return (

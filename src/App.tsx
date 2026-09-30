@@ -6,42 +6,59 @@ import { CustomerLayout } from './components/customer/CustomerLayout';
 import { InternalLogin } from './components/internal/InternalLogin';
 import { InternalLayout } from './components/internal/InternalLayout';
 import { ToastContainer } from './components/common/ToastContainer';
+import { ResetPasswordModal } from './components/common/ResetPasswordModal';
+import { Milk, Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { portal, setPortal } = useDairy();
+  const {
+    portal,
+    currentUser,
+    isLoading,
+    isPasswordRecovery,
+    setIsPasswordRecovery,
+  } = useDairy();
+
+  // Full-page branded loading splash while initializing session & credentials
+  if (isLoading && !currentUser) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-white font-sans">
+        <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20 mb-4 animate-pulse">
+          <Milk className="w-8 h-8 text-white" />
+        </div>
+        <h1 className="text-xl font-bold tracking-tight">Madhav Dairy</h1>
+        <p className="text-xs text-slate-400 mt-1">Verifying session & database security...</p>
+        <div className="mt-6 flex items-center gap-2 text-xs text-blue-400">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Connecting to Supabase...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="relative min-h-screen bg-slate-50">
-      {/* Dynamic Portal Router */}
-      {portal === 'customer_login' && <CustomerLogin />}
-      {portal === 'customer' && <CustomerLayout />}
-      {portal === 'internal_login' && <InternalLogin />}
-      {portal === 'internal' && <InternalLayout />}
+    <div className="relative min-h-screen bg-slate-50 font-sans">
+      {/* Dynamic Production Router based on Authenticated Identity */}
+      {currentUser ? (
+        currentUser.userType === 'customer' ? (
+          <CustomerLayout />
+        ) : (
+          <InternalLayout />
+        )
+      ) : (
+        portal === 'internal_login' ? (
+          <InternalLogin />
+        ) : (
+          <CustomerLogin />
+        )
+      )}
 
-      {/* Floating Global Prototype Switcher (for presentation & testing convenience) */}
-      <div className="fixed top-3 right-3 z-50 flex items-center gap-1.5 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-slate-700 shadow-lg text-white text-[11px] font-medium">
-        <span className="text-slate-400 font-normal pr-1 hidden sm:inline">Prototype Portal:</span>
-        <button
-          onClick={() => setPortal('customer_login')}
-          className={`px-2.5 py-1 rounded-full transition-all ${
-            portal === 'customer' || portal === 'customer_login'
-              ? 'bg-blue-600 text-white font-bold shadow-xs'
-              : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          Customer Portal
-        </button>
-        <button
-          onClick={() => setPortal('internal')}
-          className={`px-2.5 py-1 rounded-full transition-all ${
-            portal === 'internal' || portal === 'internal_login'
-              ? 'bg-blue-600 text-white font-bold shadow-xs'
-              : 'text-slate-300 hover:text-white'
-          }`}
-        >
-          Internal ERP
-        </button>
-      </div>
+      {/* Global Password Recovery Modal when recovery link is activated */}
+      <ResetPasswordModal
+        isOpen={isPasswordRecovery}
+        onClose={() => setIsPasswordRecovery(false)}
+        title="Set New Account Password"
+        subtitle="You accessed your account via a secure password recovery link. Please choose a new password."
+      />
 
       {/* Global Toast Notifications */}
       <ToastContainer />
@@ -60,4 +77,3 @@ export function App() {
 }
 
 export default App;
-

@@ -3,6 +3,7 @@ import { useDairy } from '../../context/DairyContext';
 import { useTranslation } from '../../i18n/LanguageContext';
 import { InternalRole } from '../../types/dairy';
 import { LanguageSelector } from '../ui/LanguageSelector';
+import { ResetPasswordModal } from '../common/ResetPasswordModal';
 import {
   Menu,
   Search,
@@ -13,7 +14,6 @@ import {
   Globe,
   LogOut,
   ChevronDown,
-  ExternalLink,
   Shield,
   Layers,
   Factory
@@ -36,17 +36,17 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
 }) => {
   const {
     internalRole,
-    setInternalRole,
     internalView,
-    setPortal,
+    currentUser,
+    logout,
     notifications,
-    expiryAlerts,
     addToast,
   } = useDairy();
 
   const { t } = useTranslation();
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,6 +66,13 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
     production_manager: t.internal.header.roleProduction,
     warehouse_manager: t.internal.header.roleWarehouse,
     accountant: t.internal.header.roleAccountant,
+  };
+
+  const roleBadges: Record<InternalRole, string> = {
+    admin: 'bg-purple-50 text-purple-700 border-purple-200',
+    production_manager: 'bg-amber-50 text-amber-700 border-amber-200',
+    warehouse_manager: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    accountant: 'bg-blue-50 text-blue-700 border-blue-200',
   };
 
   // Human-readable page titles
@@ -90,6 +97,9 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
     products: t.internal.nav.products,
     settings: t.internal.nav.settings,
   };
+
+  const displayName = currentUser?.fullName || 'Staff User';
+  const roleTitle = roleLabels[internalRole] || 'Internal Staff';
 
   return (
     <header className="bg-white border-b border-slate-200 px-4 py-2.5 sticky top-0 z-30 shadow-xs shrink-0">
@@ -127,7 +137,7 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: Actions, Language, Role Switcher, Profile */}
+        {/* Right: Actions, Language, Verified Role Badge, Profile */}
         <div className="flex items-center gap-2">
           {/* Quick Action Button depending on role */}
           {(internalRole === 'admin' || internalRole === 'production_manager') && (
@@ -150,24 +160,12 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
             </button>
           )}
 
-          {/* Role selector pill */}
-          <div className="hidden xl:flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200 text-xs">
-            {(['admin', 'production_manager', 'warehouse_manager', 'accountant'] as InternalRole[]).map(role => (
-              <button
-                key={role}
-                onClick={() => {
-                  setInternalRole(role);
-                  addToast(`Active role: ${roleLabels[role]}`, 'info');
-                }}
-                className={`px-2 py-0.5 rounded-md text-[11px] font-medium transition-all ${
-                  internalRole === role
-                    ? 'bg-white text-blue-600 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {role === 'admin' ? 'Admin' : role === 'production_manager' ? 'Production' : role === 'warehouse_manager' ? 'Warehouse' : 'Accountant'}
-              </button>
-            ))}
+          {/* Database Authenticated Role Badge (Non-clickable, coming from Supabase RBAC) */}
+          <div className="hidden md:flex items-center">
+            <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold border shadow-2xs ${roleBadges[internalRole] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+              <Shield className="w-3 h-3" />
+              <span>{roleTitle}</span>
+            </span>
           </div>
 
           {/* Language Selector */}
@@ -177,7 +175,7 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
 
           {/* Notifications Bell */}
           <button
-            onClick={() => addToast('No new urgent server alerts', 'info')}
+            onClick={() => addToast(unreadCount > 0 ? `${unreadCount} unread system notifications` : 'All notifications read', 'info')}
             className="relative p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
             title="Notifications"
             aria-label="Notifications"
@@ -195,15 +193,15 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
               className="flex items-center gap-2 pl-2 pr-1.5 py-1 rounded-lg hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
               aria-label="User Profile Menu"
             >
-              <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                {internalRole.charAt(0).toUpperCase()}
+              <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
+                {displayName.charAt(0).toUpperCase()}
               </div>
               <div className="hidden md:block text-left text-xs">
-                <span className="font-semibold text-slate-900 block leading-tight">
-                  {internalRole === 'admin' ? 'Madhavrao J.' : internalRole === 'production_manager' ? 'Suresh D.' : internalRole === 'warehouse_manager' ? 'Vikram S.' : 'Sunil K.'}
+                <span className="font-semibold text-slate-900 block leading-tight truncate max-w-[120px]">
+                  {displayName}
                 </span>
                 <span className="text-[10px] text-slate-500 block leading-tight">
-                  {roleLabels[internalRole]}
+                  {roleTitle}
                 </span>
               </div>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -211,35 +209,29 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
 
             {/* Dropdown Menu */}
             {isProfileOpen && (
-              <div className="absolute right-0 mt-1.5 w-52 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
-                <div className="px-3.5 py-2 border-b border-slate-100">
-                  <p className="text-xs font-semibold text-slate-900">
-                    {internalRole === 'admin' ? 'Madhavrao Joshi' : internalRole === 'production_manager' ? 'Suresh Deshmukh' : internalRole === 'warehouse_manager' ? 'Vikram Shinde' : 'Sunil Kulkarni'}
+              <div className="absolute right-0 mt-1.5 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-100">
+                <div className="px-3.5 py-2.5 border-b border-slate-100">
+                  <p className="text-xs font-bold text-slate-900 truncate">
+                    {displayName}
                   </p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">{roleLabels[internalRole]}</p>
+                  <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                    {currentUser?.email || 'Authenticated Employee'}
+                  </p>
+                  <span className="inline-block text-[10px] font-semibold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded mt-1 border border-blue-100">
+                    {roleTitle}
+                  </span>
                 </div>
 
                 <div className="py-1">
                   <button
                     onClick={() => {
                       setIsProfileOpen(false);
-                      addToast('Profile settings: Head Office, Satara', 'info');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 text-left transition-colors"
-                  >
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{t.internal.header.myProfile}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      addToast('Password update modal opened', 'info');
+                      setIsChangePasswordOpen(true);
                     }}
                     className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 hover:text-slate-900 text-left transition-colors"
                   >
                     <KeyRound className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{t.internal.header.changePassword}</span>
+                    <span>Change Password</span>
                   </button>
 
                   <div className="px-3.5 py-2 flex items-center justify-between border-t border-b border-slate-100 my-1">
@@ -251,25 +243,14 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
                   </div>
 
                   <button
-                    onClick={() => {
+                    onClick={async () => {
                       setIsProfileOpen(false);
-                      setPortal('customer_login');
+                      await logout();
                     }}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-slate-700 hover:bg-slate-50 text-left transition-colors"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{t.internal.header.switchPortal}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setIsProfileOpen(false);
-                      setPortal('internal_login');
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-red-600 hover:bg-red-50 text-left font-medium transition-colors"
+                    className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-red-600 hover:bg-red-50 text-left font-semibold transition-colors"
                   >
                     <LogOut className="w-3.5 h-3.5" />
-                    <span>{t.internal.header.logout}</span>
+                    <span>Sign Out</span>
                   </button>
                 </div>
               </div>
@@ -277,7 +258,14 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Change Password Modal */}
+      <ResetPasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+        title="Change Your Account Password"
+        subtitle="Establish a new password for your Madhav Dairy ERP staff account."
+      />
     </header>
   );
 };
-

@@ -11,7 +11,7 @@ export const CustomerNotifications: React.FC<CustomerNotificationsProps> = ({ on
   const { notifications, currentRetailer, markNotificationRead, markAllNotificationsRead } = useDairy();
 
   const customerNotifs = notifications.filter(
-    n => n.recipientType === 'customer' && (n.recipientId === currentRetailer.id || !n.recipientId)
+    n => n.recipientType === 'customer' && (!n.recipientId || (currentRetailer && n.recipientId === currentRetailer.id))
   );
 
   const todayNotifs = customerNotifs.filter(n => n.timeGroup === 'today');

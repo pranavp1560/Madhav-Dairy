@@ -49,19 +49,38 @@ export const customerService = {
     gstin?: string;
     creditLimit?: number;
   }): Promise<Retailer> {
-    const code = 'RET-' + Math.floor(1000 + Math.random() * 9000);
+    // Generate sequential customer code via document sequences or count
+    let customerCode = 'RET-1001';
+    try {
+      const { data: seqData, error: seqErr } = await supabase.rpc('next_document_number', {
+        p_org_id: '00000000-0000-0000-0000-000000000001',
+        p_doc_type: 'customer',
+        p_prefix: 'RET',
+        p_padding: 4,
+      });
+      if (!seqErr && seqData) {
+        customerCode = seqData;
+      } else {
+        const { count } = await supabase.from('customers').select('*', { count: 'exact', head: true });
+        customerCode = `RET-${1000 + (count || 0) + 1}`;
+      }
+    } catch {
+      const { count } = await supabase.from('customers').select('*', { count: 'exact', head: true });
+      customerCode = `RET-${1000 + (count || 0) + 1}`;
+    }
+
     const { data: newCust, error } = await supabase
       .from('customers')
       .insert({
         organization_id: '00000000-0000-0000-0000-000000000001',
-        customer_code: code,
-        business_name: data.businessName,
-        owner_name: data.ownerName,
-        mobile: data.mobile,
-        email: data.email || null,
-        address: data.address,
-        area: data.area || 'Pune Region',
-        gstin: data.gstin || null,
+        customer_code: customerCode,
+        business_name: data.businessName.trim(),
+        owner_name: data.ownerName.trim(),
+        mobile: data.mobile.trim(),
+        email: data.email?.trim().toLowerCase() || null,
+        address: data.address.trim(),
+        area: data.area?.trim() || 'Pune Region',
+        gstin: data.gstin?.trim() || null,
         credit_limit: data.creditLimit || 50000,
         payment_terms_days: 15,
         status: 'active',

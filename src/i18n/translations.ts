@@ -77,6 +77,11 @@ export interface Translations {
       deliveringTo: string;
       orderNotes: string;
       notesPlaceholder: string;
+      expectedDeliveryDate: string;
+      selectDeliveryDate: string;
+      deliveryDateHelp: string;
+      quickTomorrow: string;
+      quickDayAfter: string;
     };
     checkout: {
       confirmTitle: string;
@@ -287,6 +292,11 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         deliveringTo: 'Delivery Address',
         orderNotes: 'Delivery Instructions (Optional)',
         notesPlaceholder: 'e.g. Please deliver before 8:00 AM',
+        expectedDeliveryDate: 'Expected Date of Delivery',
+        selectDeliveryDate: 'Select Expected Delivery Date',
+        deliveryDateHelp: 'Select when your retail store requires this fresh dairy delivery.',
+        quickTomorrow: 'Tomorrow',
+        quickDayAfter: 'Day After Tomorrow',
       },
       checkout: {
         confirmTitle: 'Confirm Dairy Order',
@@ -495,6 +505,11 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         deliveringTo: 'डिलिव्हरी पत्ता',
         orderNotes: 'काही सूचना (पर्यायी)',
         notesPlaceholder: 'उदा. सकाळी ८ च्या आधी पोहोचवा',
+        expectedDeliveryDate: 'अपेक्षित डिलिव्हरी तारीख',
+        selectDeliveryDate: 'डिलिव्हरीची तारीख निवडा',
+        deliveryDateHelp: 'तुमच्या दुकानाला ताजे डेअरी पदार्थ कोणत्या तारखेला हवे आहेत ते निवडा.',
+        quickTomorrow: 'उद्या',
+        quickDayAfter: 'परवा',
       },
       checkout: {
         confirmTitle: 'ऑर्डरची खात्री करा',
@@ -703,6 +718,11 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         deliveringTo: 'डिलिवरी का पता',
         orderNotes: 'डिलिवरी निर्देश (वैकल्पिक)',
         notesPlaceholder: 'उदा. सुबह 8 बजे से पहले पहुंचाएं',
+        expectedDeliveryDate: 'अपेक्षित डिलिवरी तिथि',
+        selectDeliveryDate: 'डिलिवरी की तारीख चुनें',
+        deliveryDateHelp: 'अपनी दुकान के लिए ताज़ा डेयरी उत्पादों की अपेक्षित डिलिवरी तिथि चुनें।',
+        quickTomorrow: 'कल',
+        quickDayAfter: 'परसों',
       },
       checkout: {
         confirmTitle: 'ऑर्डर की पुष्टि करें',

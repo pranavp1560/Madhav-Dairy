@@ -52,11 +52,8 @@ interface DairyContextType {
   portal: 'customer' | 'internal' | 'customer_login' | 'internal_login';
   setPortal: (p: 'customer' | 'internal' | 'customer_login' | 'internal_login') => void;
   internalRole: InternalRole;
-  setInternalRole: (role: InternalRole) => void;
   internalView: string;
   setInternalView: (view: string) => void;
-  customerViewMode: 'device_frame' | 'fluid';
-  setCustomerViewMode: (mode: 'device_frame' | 'fluid') => void;
   selectedBatchId: string | null;
   setSelectedBatchId: (id: string | null) => void;
   selectedRetailerId: string | null;
@@ -73,10 +70,12 @@ interface DairyContextType {
   isLoading: boolean;
   error: string | null;
   refreshData: () => Promise<void>;
+  isPasswordRecovery: boolean;
+  setIsPasswordRecovery: (val: boolean) => void;
 
   // Active Retailer
-  currentRetailer: Retailer;
-  setCurrentRetailer: (r: Retailer) => void;
+  currentRetailer: Retailer | null;
+  setCurrentRetailer: (r: Retailer | null) => void;
 
   // Live Supabase Domain Data
   products: Product[];
@@ -104,7 +103,7 @@ interface DairyContextType {
   updateCartQty: (productId: string, qty: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
-  placeOrder: (notes?: string) => Promise<Order>;
+  placeOrder: (notes?: string, deliveryDate?: string) => Promise<Order>;
   reorder: (orderId: string) => void;
 
   // Business Actions
@@ -182,7 +181,16 @@ interface DairyContextType {
 
   updateUserStatus: (userId: string, status: 'active' | 'inactive') => Promise<void>;
   updateUserRole: (userId: string, role: InternalRole) => Promise<void>;
-  registerRetailer: (data: { businessName: string; ownerName: string; mobile: string; address: string; password?: string }) => Promise<Retailer>;
+  registerRetailer: (data: {
+    businessName: string;
+    ownerName: string;
+    email?: string;
+    mobile: string;
+    password?: string;
+    address: string;
+    area?: string;
+    creditLimit?: number;
+  }) => Promise<Retailer>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   toggleExpiryRule: (ruleId: string) => Promise<void>;
@@ -195,30 +203,12 @@ interface DairyContextType {
   removeToast: (id: string) => void;
 }
 
-const fallbackRetailer: Retailer = {
-  id: '70000000-0000-0000-0000-000000000001',
-  businessName: 'ABC Retailers',
-  ownerName: 'Ramesh Patil',
-  mobile: '9822012345',
-  email: 'abc.retailers@gmail.com',
-  address: 'Shop No. 4, Shivaji Chowk, Kothrud, Pune - 411038',
-  area: 'Pune West',
-  gstin: '27AABCU9603R1ZM',
-  creditLimit: 100000,
-  outstandingAmount: 28500,
-  paymentTerms: 'Net 15 Days',
-  status: 'active',
-  lastOrderDate: '2026-09-10',
-};
-
 const DairyContext = createContext<DairyContextType | undefined>(undefined);
 
 export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Navigation
+  // Navigation & Session State
   const [portal, setPortal] = useState<'customer' | 'internal' | 'customer_login' | 'internal_login'>('customer_login');
-  const [internalRole, setInternalRole] = useState<InternalRole>('admin');
   const [internalView, setInternalView] = useState<string>('dashboard');
-  const [customerViewMode, setCustomerViewMode] = useState<'device_frame' | 'fluid'>('device_frame');
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
   const [selectedRetailerId, setSelectedRetailerId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -228,12 +218,13 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currentUser, setCurrentUser] = useState<UserSessionProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState<boolean>(false);
 
   // Entities initialized from Supabase
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
-  const [currentRetailer, setCurrentRetailer] = useState<Retailer>(fallbackRetailer);
+  const [currentRetailer, setCurrentRetailer] = useState<Retailer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -255,89 +246,137 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = (message: string, type: Toast['type'] = 'success') => {
-    const id = Math.random().toString(36).substring(2, 9);
+    const id = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    }, 4500);
   };
 
   const removeToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  // Primary Data Loading from Supabase
+  // Determine active internal role dynamically from database profile
+  const internalRole: InternalRole = useMemo(() => {
+    if (currentUser && currentUser.userType === 'internal') {
+      return (currentUser.role as InternalRole) || 'admin';
+    }
+    return 'admin';
+  }, [currentUser]);
+
+  // Primary Data Loading from Supabase according to authenticated identity
   const refreshData = useCallback(async () => {
     try {
       setIsLoading(true);
       setError(null);
 
-      // Load products & categories
+      // 1. Always load products (public catalog accessible to both customers and staff)
       const prods = await productService.fetchProducts();
       setProducts(prods);
 
-      // Load retailers
-      const custs = await customerService.fetchCustomers();
-      setRetailers(custs);
-      if (custs.length > 0) {
-        setCurrentRetailer(custs[0]);
+      // Check current session to load role-appropriate domain data
+      const session = await authService.getSession();
+      if (!session?.user) {
+        // Not authenticated: clear user-specific data
+        setRetailers([]);
+        setCurrentRetailer(null);
+        setOrders([]);
+        setInvoices([]);
+        setPayments([]);
+        setLedger([]);
+        setBatches([]);
+        setStockMovements([]);
+        setRawMaterials([]);
+        setRawMaterialMovements([]);
+        setExpenses([]);
+        setExpiryAlerts([]);
+        setNotifications([]);
+        setUsers([]);
+        return;
       }
 
-      // Load orders
-      const ords = await orderService.fetchOrders();
-      setOrders(ords);
+      const profile = await authService.getUserProfile(session.user.id);
+      if (!profile) return;
 
-      // Load invoices
-      const invs = await invoiceService.fetchInvoices();
-      setInvoices(invs);
+      if (profile.userType === 'customer') {
+        // Customer view: RLS isolates customer data automatically
+        const custs = await customerService.fetchCustomers();
+        setRetailers(custs);
 
-      // Load payments
-      const pays = await paymentService.fetchPayments();
-      setPayments(pays);
+        if (profile.customer) {
+          setCurrentRetailer(profile.customer);
+        } else if (custs.length > 0) {
+          setCurrentRetailer(custs[0]);
+        }
 
-      // Load ledger
-      const ledg = await ledgerService.fetchLedger();
-      setLedger(ledg);
+        const [ords, invs, notifs, expAlerts] = await Promise.all([
+          orderService.fetchOrders(),
+          invoiceService.fetchInvoices(),
+          notificationService.fetchNotifications(),
+          expiryService.fetchExpiryAlerts(),
+        ]);
 
-      // Load inventory & batches
-      const bts = await inventoryService.fetchBatches();
-      setBatches(bts);
+        setOrders(ords);
+        setInvoices(invs);
+        setNotifications(notifs);
+        setExpiryAlerts(expAlerts);
 
-      const movs = await inventoryService.fetchStockMovements();
-      setStockMovements(movs);
+      } else if (profile.userType === 'internal') {
+        // Internal staff view: load full organization data permitted by RLS
+        const [
+          custs,
+          ords,
+          invs,
+          pays,
+          ledg,
+          bts,
+          movs,
+          rms,
+          rmMovs,
+          exps,
+          expR,
+          expA,
+          notifs,
+          usrs,
+          rPerms
+        ] = await Promise.all([
+          customerService.fetchCustomers(),
+          orderService.fetchOrders(),
+          invoiceService.fetchInvoices(),
+          paymentService.fetchPayments(),
+          ledgerService.fetchLedger(),
+          inventoryService.fetchBatches(),
+          inventoryService.fetchStockMovements(),
+          rawMaterialService.fetchRawMaterials(),
+          rawMaterialService.fetchRawMaterialMovements(),
+          expenseService.fetchExpenses(),
+          expiryService.fetchExpiryRules(),
+          expiryService.fetchExpiryAlerts(),
+          notificationService.fetchNotifications(),
+          userService.fetchUsers(),
+          userService.fetchRolePermissions(),
+        ]);
 
-      // Load raw materials
-      const rms = await rawMaterialService.fetchRawMaterials();
-      setRawMaterials(rms);
-
-      const rmMovs = await rawMaterialService.fetchRawMaterialMovements();
-      setRawMaterialMovements(rmMovs);
-
-      // Load expenses
-      const exps = await expenseService.fetchExpenses();
-      setExpenses(exps);
-
-      // Load expiry radar
-      const expR = await expiryService.fetchExpiryRules();
-      setExpiryRules(expR);
-
-      const expA = await expiryService.fetchExpiryAlerts();
-      setExpiryAlerts(expA);
-
-      // Load notifications
-      const notifs = await notificationService.fetchNotifications();
-      setNotifications(notifs);
-
-      // Load users & roles
-      const usrs = await userService.fetchUsers();
-      setUsers(usrs);
-
-      const rPerms = await userService.fetchRolePermissions();
-      setRolePermissions(rPerms);
-
+        setRetailers(custs);
+        setOrders(ords);
+        setInvoices(invs);
+        setPayments(pays);
+        setLedger(ledg);
+        setBatches(bts);
+        setStockMovements(movs);
+        setRawMaterials(rms);
+        setRawMaterialMovements(rmMovs);
+        setExpenses(exps);
+        setExpiryRules(expR);
+        setExpiryAlerts(expA);
+        setNotifications(notifs);
+        setUsers(usrs);
+        setRolePermissions(rPerms);
+      }
     } catch (err: any) {
-      console.error('Error fetching Supabase data:', err);
-      setError(err.message || 'Failed to load data from Supabase');
+      console.error('Data refresh error:', err);
+      setError(err.message || 'Failed to sync live data from Supabase');
     } finally {
       setIsLoading(false);
     }
@@ -345,25 +384,53 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Restore Supabase Auth session on component mount
   useEffect(() => {
+    // Check for password recovery hash in URL
+    if (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')) {
+      setIsPasswordRecovery(true);
+    }
+
     const initAuth = async () => {
       try {
+        setIsLoading(true);
         const session = await authService.getSession();
         if (session?.user) {
           const profile = await authService.getUserProfile(session.user.id);
           if (profile) {
+            if (profile.status !== 'active') {
+              await authService.signOut();
+              setCurrentUser(null);
+              setCurrentRetailer(null);
+              setPortal('customer_login');
+              addToast('Your account is inactive or suspended. Please contact management.', 'error');
+              return;
+            }
+
             setCurrentUser(profile);
             if (profile.userType === 'customer') {
               setPortal('customer');
+              if (profile.customer) {
+                setCurrentRetailer(profile.customer);
+              }
             } else {
               setPortal('internal');
-              setInternalRole(profile.role as InternalRole);
             }
+          } else {
+            setCurrentUser(null);
+            setPortal('customer_login');
           }
+        } else {
+          setCurrentUser(null);
+          setCurrentRetailer(null);
+          setPortal('customer_login');
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn('Session restoration error:', e);
+        setCurrentUser(null);
+        setCurrentRetailer(null);
+        setPortal('customer_login');
       } finally {
         await refreshData();
+        setIsLoading(false);
       }
     };
 
@@ -371,19 +438,41 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Listen to Supabase auth state change
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        return;
+      }
+
       if (session?.user) {
-        const profile = await authService.getUserProfile(session.user.id);
-        setCurrentUser(profile);
-        if (profile) {
-          if (profile.userType === 'customer') {
-            setPortal('customer');
-          } else {
-            setPortal('internal');
-            setInternalRole(profile.role as InternalRole);
+        try {
+          const profile = await authService.getUserProfile(session.user.id);
+          if (profile) {
+            if (profile.status !== 'active') {
+              await authService.signOut();
+              setCurrentUser(null);
+              setCurrentRetailer(null);
+              setPortal('customer_login');
+              addToast('Your account is inactive or suspended.', 'error');
+              return;
+            }
+
+            setCurrentUser(profile);
+            if (profile.userType === 'customer') {
+              setPortal('customer');
+              if (profile.customer) {
+                setCurrentRetailer(profile.customer);
+              }
+            } else {
+              setPortal('internal');
+            }
           }
+        } catch (err) {
+          console.error('Auth state profile error:', err);
         }
       } else if (event === 'SIGNED_OUT') {
         setCurrentUser(null);
+        setCurrentRetailer(null);
+        setCart([]);
         setPortal('customer_login');
       }
     });
@@ -399,24 +488,39 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setCurrentUser(profile);
     if (profile.userType === 'customer') {
       setPortal('customer');
-      if (profile.customerId) {
-        const matched = retailers.find(r => r.id === profile.customerId);
-        if (matched) setCurrentRetailer(matched);
+      if (profile.customer) {
+        setCurrentRetailer(profile.customer);
       }
     } else {
       setPortal('internal');
-      setInternalRole(profile.role as InternalRole);
     }
     await refreshData();
-    addToast(`Welcome, ${profile.fullName}!`, 'success');
+    addToast(`Welcome back, ${profile.fullName}!`, 'success');
     return profile;
   };
 
   const logout = async () => {
-    await authService.signOut();
-    setCurrentUser(null);
-    setPortal('customer_login');
-    addToast('Logged out successfully', 'info');
+    try {
+      await authService.signOut();
+    } finally {
+      setCurrentUser(null);
+      setCurrentRetailer(null);
+      setCart([]);
+      setOrders([]);
+      setInvoices([]);
+      setPayments([]);
+      setLedger([]);
+      setBatches([]);
+      setStockMovements([]);
+      setRawMaterials([]);
+      setRawMaterialMovements([]);
+      setExpenses([]);
+      setExpiryAlerts([]);
+      setNotifications([]);
+      setUsers([]);
+      setPortal('customer_login');
+      addToast('Signed out successfully', 'info');
+    }
   };
 
   // Cart operations
@@ -468,9 +572,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [cart]);
 
   // Place order
-  const placeOrder = async (notes?: string): Promise<Order> => {
+  const placeOrder = async (notes?: string, deliveryDate?: string): Promise<Order> => {
     if (cart.length === 0) {
       throw new Error('Cart is empty');
+    }
+    if (!currentRetailer) {
+      throw new Error('No authenticated customer account found. Please sign in again.');
     }
 
     try {
@@ -483,7 +590,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           unitPrice: i.product.defaultPrice,
         })),
         notes: notes || 'Booked via Customer Retailer Portal',
-        deliveryDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+        deliveryDate: deliveryDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
       });
 
       setOrders(prev => [newOrder, ...prev]);
@@ -606,7 +713,6 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const newPay = await paymentService.recordPayment(data);
       setPayments(prev => [newPay, ...prev]);
 
-      // Refresh invoices, ledger, and customer balances
       const [updatedInvs, updatedLedger, updatedRetailers] = await Promise.all([
         invoiceService.fetchInvoices(),
         ledgerService.fetchLedger(),
@@ -672,8 +778,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     reference?: string;
     notes?: string;
   }) => {
-    const matId = data.materialId || rawMaterials[0]?.id || '60000000-0000-0000-0000-000000000001';
-    await addRawMaterialStock(matId, data.qty, data.reference || 'PO-NEW', data.notes);
+    const matId = data.materialId || rawMaterials[0]?.id;
+    if (!matId) {
+      addToast('No raw material selected', 'error');
+      return;
+    }
+    await addRawMaterialStock(matId, data.qty, data.reference || 'PO-PURCHASE', data.notes);
   };
 
   const recordRawMaterialUsage = async (data: {
@@ -705,12 +815,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // User & Roles
+  // User & Roles Management
   const updateUserStatus = async (userId: string, status: 'active' | 'inactive') => {
     try {
       await userService.updateUserStatus(userId, status);
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
-      addToast(`User status updated to ${status}`, 'success');
+      addToast(`Employee status updated to ${status}`, 'success');
     } catch (err: any) {
       addToast(`Failed to update status: ${err.message}`, 'error');
     }
@@ -720,43 +830,36 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await userService.updateUserRole(userId, role);
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
-      addToast(`User role updated to ${role}`, 'success');
+      addToast(`Employee role updated to ${role}`, 'success');
     } catch (err: any) {
       addToast(`Failed to update role: ${err.message}`, 'error');
     }
   };
 
-  // Customer Registration
+  // Internal Customer Creation from ERP
   const registerRetailer = async (data: {
     businessName: string;
     ownerName: string;
+    email?: string;
     mobile: string;
-    address: string;
     password?: string;
+    address: string;
+    area?: string;
+    creditLimit?: number;
   }): Promise<Retailer> => {
     try {
-      const cleanMobile = data.mobile.replace(/\D/g, '');
-      const authEmail = `retailer.${cleanMobile}@madhavdairy.com`;
-      const pass = data.password || 'Password@123';
-
       const newRet = await customerService.registerCustomer({
-        ...data,
-        email: authEmail,
+        businessName: data.businessName,
+        ownerName: data.ownerName,
+        email: data.email,
+        mobile: data.mobile,
+        address: data.address,
+        area: data.area,
+        creditLimit: data.creditLimit,
       });
 
-      // Provision auth account in background so retailer can log in immediately
-      try {
-        await authService.signUp(authEmail, pass, data.ownerName, cleanMobile, 'customer', {
-          businessName: data.businessName,
-          address: data.address,
-        });
-      } catch (authErr) {
-        console.warn('Customer auth provision note:', authErr);
-      }
-
       setRetailers(prev => [...prev, newRet]);
-      setCurrentRetailer(newRet);
-      addToast(`Retailer account for "${newRet.businessName}" registered!`, 'success');
+      addToast(`Customer "${newRet.businessName}" added to system!`, 'success');
       return newRet;
     } catch (err: any) {
       addToast(`Registration failed: ${err.message}`, 'error');
@@ -794,9 +897,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
 
-  const markAllNotificationsRead = async () => {
+  const markAllNotificationsRead = async (recipientType: 'customer' | 'internal') => {
     await notificationService.markAllAsRead();
-    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+    setNotifications(prev => prev.map(n => n.recipientType === recipientType ? { ...n, read: true } : n));
   };
 
   return (
@@ -805,11 +908,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         portal,
         setPortal,
         internalRole,
-        setInternalRole,
         internalView,
         setInternalView,
-        customerViewMode,
-        setCustomerViewMode,
         selectedBatchId,
         setSelectedBatchId,
         selectedRetailerId,
@@ -825,6 +925,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         isLoading,
         error,
         refreshData,
+        isPasswordRecovery,
+        setIsPasswordRecovery,
 
         currentRetailer,
         setCurrentRetailer,

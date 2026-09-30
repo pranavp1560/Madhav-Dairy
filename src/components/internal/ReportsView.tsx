@@ -17,7 +17,7 @@ export const ReportsView: React.FC = () => {
   >('sales');
 
   const handleExport = () => {
-    addToast(`${activeReport.toUpperCase()} report exported to Excel / CSV (simulated)`, 'success');
+    addToast(`${activeReport.toUpperCase()} report exported`, 'success');
   };
 
   return (

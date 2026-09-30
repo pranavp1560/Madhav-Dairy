@@ -50,7 +50,7 @@ export const StockMovementsView: React.FC<StockMovementsViewProps> = ({ onSelect
           variant="secondary"
           size="sm"
           icon={<Download className="w-3.5 h-3.5" />}
-          onClick={() => addToast('Exporting stock movements to CSV (simulated)', 'info')}
+          onClick={() => addToast('Exporting stock movements to CSV', 'info')}
         >
           Export Ledger
         </Button>

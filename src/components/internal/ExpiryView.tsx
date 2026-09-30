@@ -372,7 +372,7 @@ export const ExpiryView: React.FC<ExpiryViewProps> = ({ onSelectBatch }) => {
                 <tr key={notif.id} className="hover:bg-blue-50/30 transition-colors">
                   <td className="p-3 text-slate-600 font-mono-numbers">{notif.date}</td>
                   <td className="p-3 font-semibold text-slate-800">
-                    {notif.recipientType === 'customer' ? 'ABC Retailers' : 'Internal System'}
+                    {notif.recipientType === 'customer' ? 'Customer / Retailer' : 'Internal Operations'}
                   </td>
                   <td className="p-3 text-slate-900 font-medium">{notif.title}</td>
                   <td className="p-3">

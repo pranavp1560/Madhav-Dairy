@@ -31,7 +31,10 @@ export const LedgerView: React.FC = () => {
             variant="secondary"
             size="sm"
             icon={<Printer className="w-3.5 h-3.5" />}
-            onClick={() => addToast('Printing account statement (simulated)', 'info')}
+            onClick={() => {
+              window.print();
+              addToast('Printing account statement', 'info');
+            }}
           >
             Print Statement
           </Button>

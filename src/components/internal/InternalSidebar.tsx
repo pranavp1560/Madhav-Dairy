@@ -63,7 +63,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
 }) => {
-  const { internalRole, internalView, setInternalView, setPortal, expiryAlerts, orders } = useDairy();
+  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders } = useDairy();
   const { t } = useTranslation();
 
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(
@@ -303,22 +303,24 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
       <div className="p-3 border-t border-slate-200 bg-slate-50/80 shrink-0">
         <div className="flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 shadow-xs">
           <div className="flex items-center gap-2 truncate">
-            <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-              {internalRole.charAt(0).toUpperCase()}
+            <div className="w-7 h-7 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs">
+              {(currentUser?.fullName || internalRole).charAt(0).toUpperCase()}
             </div>
             {!isCollapsed && (
               <div className="truncate">
-                <p className="text-xs font-semibold text-slate-900 capitalize truncate">
+                <p className="text-xs font-semibold text-slate-900 truncate">
+                  {currentUser?.fullName || internalRole.replace('_', ' ')}
+                </p>
+                <p className="text-[10px] text-slate-500 capitalize">
                   {internalRole.replace('_', ' ')}
                 </p>
-                <p className="text-[10px] text-slate-500">Head Office</p>
               </div>
             )}
           </div>
           {!isCollapsed && (
             <button
-              onClick={() => setPortal('internal_login')}
-              className="p-1 rounded text-slate-400 hover:text-red-600 transition-colors"
+              onClick={() => logout()}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors"
               title={t.common.logout}
               aria-label={t.common.logout}
             >

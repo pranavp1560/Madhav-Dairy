@@ -11,7 +11,7 @@ export const CustomerExpiryAlerts: React.FC = () => {
   const [activeFilter, setActiveFilter] = useState<string>('all');
 
   const retailerAlerts = expiryAlerts.filter(
-    a => a.retailerId === currentRetailer.id || (!a.retailerId && a.location === 'warehouse' && a.daysRemaining <= 5)
+    a => (currentRetailer && a.retailerId === currentRetailer.id) || (!a.retailerId && a.location === 'warehouse' && a.daysRemaining <= 5)
   );
 
   const filtered = retailerAlerts.filter(a => {
@@ -193,7 +193,7 @@ export const CustomerExpiryAlerts: React.FC = () => {
               <div className="flex justify-between">
                 <span className="text-slate-500">Stock Location:</span>
                 <span className="font-bold text-slate-800 capitalize">
-                  {selectedAlert.location} ({currentRetailer.businessName})
+                  {selectedAlert.location} ({currentRetailer?.businessName || 'Store'})
                 </span>
               </div>
               <div className="flex justify-between">
