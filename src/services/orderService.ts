@@ -195,13 +195,19 @@ export const orderService = {
         });
       }
 
-      // Validate each item against the channel minimum price rule
+      // Validate each item against the channel minimum price rule & enforce authoritative channel pricing
       for (const item of params.items) {
         const rule = (item.skuId ? priceMap[item.skuId] : undefined) || (item.productId ? priceMap[item.productId] : undefined);
-        if (rule && item.unitPrice < rule.minimum) {
-          throw new Error(
-            `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName}".`
-          );
+        if (rule) {
+          if (item.unitPrice < rule.minimum) {
+            throw new Error(
+              `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName}".`
+            );
+          }
+          // Section 24: Authoritative price validation - do not trust manipulated browser prices lower than standard price for customer portal
+          if (params.notes?.includes('Customer') || (params as any).isCustomerOrder) {
+            item.unitPrice = rule.standard;
+          }
         }
       }
     }

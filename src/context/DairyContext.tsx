@@ -731,19 +731,26 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           effectivePrice = scp.standardPrice;
         }
       } else {
-        // Fallback to product channel price
-        const cp = (prod.channelPrices || channelPrices).find(
-          c => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
+        const scp = skuChannelPrices.find(
+          c => c.skuId === targetSku?.id && c.channelId === currentRetailer.salesChannelId && c.isActive
         );
-        if (cp) {
-          effectivePrice = cp.standardPrice;
+        if (scp) {
+          effectivePrice = scp.standardPrice;
+        } else {
+          // Fallback to product channel price
+          const cp = (prod.channelPrices || channelPrices).find(
+            c => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
+          );
+          if (cp) {
+            effectivePrice = cp.standardPrice;
+          }
         }
       }
     }
 
     setCart(prev => {
       const matchIdx = prev.findIndex(item =>
-        item.product.id === productId && (targetSku ? item.sku?.id === targetSku.id : true)
+        item.product.id === productId && (targetSku ? item.sku?.id === targetSku.id : !item.sku)
       );
 
       if (matchIdx >= 0) {
@@ -769,7 +776,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const skuLabel = targetSku?.variantName || targetSku?.packSize;
     const label = skuLabel ? `${prod.name} (${skuLabel})` : prod.name;
-    addToast(`Added ${label} to cart`, 'info');
+    addToast(`Added ${qty} × ${label} to cart`, 'info');
   };
 
   const updateCartQty = (productId: string, qty: number, skuId?: string) => {
@@ -779,7 +786,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
     setCart(prev =>
       prev.map(item => {
-        const matches = item.product.id === productId && (skuId ? item.sku?.id === skuId : true);
+        const matches = item.product.id === productId && (skuId ? item.sku?.id === skuId : !item.sku);
         return matches ? { ...item, quantity: qty } : item;
       })
     );
@@ -857,7 +864,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     prevOrder.items.forEach(item => {
       const prod = products.find(p => p.id === item.productId);
       if (prod) {
-        addToCart(prod.id, item.quantity);
+        addToCart(prod.id, item.quantity, item.skuId);
       }
     });
 

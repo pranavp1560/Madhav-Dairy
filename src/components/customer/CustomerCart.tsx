@@ -233,17 +233,24 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
               key={key}
               className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 space-y-1">
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                  {item.product.name} {skuLabel ? <span className="text-blue-700 font-semibold text-sm">({skuLabel})</span> : ''}
+                  {item.product.name}
                 </h2>
-                <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
-                  <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
-                    {item.sku?.packSize || item.product.unit}
+                {skuLabel && (
+                  <div>
+                    <span className="inline-flex items-center text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
+                      {skuLabel}
+                    </span>
+                  </div>
+                )}
+                <div className="text-sm text-slate-600 pt-0.5 flex items-center gap-1.5">
+                  <span className="font-mono-numbers font-medium text-slate-700">
+                    {item.quantity} × ₹{itemPrice}
                   </span>
-                  <span>•</span>
-                  <span className="font-mono-numbers font-semibold">
-                    ₹{itemPrice} / pack
+                  <span className="text-slate-400">=</span>
+                  <span className="font-mono-numbers font-black text-slate-900">
+                    ₹{itemTotal.toLocaleString()}
                   </span>
                 </div>
               </div>
