@@ -95,6 +95,9 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
     users: t.internal.nav.users,
     roles: t.internal.nav.rolesPermissions,
     products: t.internal.nav.products,
+    categories: t.internal.nav.categories,
+    channels: t.internal.nav.channels,
+    pricing: t.internal.nav.pricing,
     settings: t.internal.nav.settings,
   };
 

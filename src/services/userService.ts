@@ -14,6 +14,7 @@ export const userService = {
         department_id,
         last_login_at,
         created_at,
+        invited_at,
         user_roles (
           roles (
             name
@@ -33,9 +34,10 @@ export const userService = {
         email: p.email || '',
         mobile: p.mobile || '',
         role: roleName as InternalRole,
-        status: p.status === 'active' ? 'active' : 'inactive',
-        lastLogin: p.last_login_at ? new Date(p.last_login_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never',
+        status: (p.status === 'invited' ? 'invited' : p.status === 'active' ? 'active' : 'inactive') as 'active' | 'inactive' | 'invited',
+        lastLogin: p.last_login_at ? new Date(p.last_login_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : (p.status === 'invited' ? 'Pending Setup' : 'Never'),
         department: p.department_id || 'Operations',
+        invitedAt: p.invited_at,
       };
     });
   },
@@ -64,27 +66,72 @@ export const userService = {
     mobile: string;
     department: string;
     role: InternalRole;
-    password: string;
-    status?: 'active' | 'inactive';
+    status?: 'active' | 'inactive' | 'invited';
   }): Promise<any> {
-    const { data: result, error } = await supabase.rpc('admin_create_employee', {
-      p_full_name: data.fullName.trim(),
-      p_email: data.email.trim().toLowerCase(),
-      p_mobile: data.mobile.trim(),
-      p_department: data.department.trim(),
-      p_role: data.role,
-      p_password: data.password,
-      p_status: data.status || 'active',
+    const cleanEmail = data.email.trim().toLowerCase();
+    const cleanMobile = data.mobile.trim().replace(/\D/g, '');
+
+    // Invoke server-side Supabase Edge Function (Admin API invitation flow)
+    const { data: result, error } = await supabase.functions.invoke('admin-create-employee', {
+      body: {
+        fullName: data.fullName.trim(),
+        email: cleanEmail,
+        mobile: cleanMobile,
+        department: data.department.trim(),
+        role: data.role,
+        status: data.status || 'invited',
+      },
     });
 
     if (error) {
-      throw new Error(error.message || 'Failed to create employee');
+      let errMsg = error.message;
+      try {
+        if ((error as any).context?.json) {
+          const parsed = await (error as any).context.json();
+          if (parsed?.error) errMsg = parsed.error;
+        }
+      } catch {
+        // preserve standard message
+      }
+
+      // In local development, fall back to dev API proxy if cloud function is not yet deployed
+      if (import.meta.env.DEV && (errMsg?.includes('404') || errMsg?.includes('Failed to send') || (error as any).name === 'FunctionsHttpError' || (error as any).name === 'FunctionsRelayError')) {
+        try {
+          const session = await supabase.auth.getSession();
+          const res = await fetch('/api/admin-create-employee', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session.data.session?.access_token || ''}`,
+            },
+            body: JSON.stringify({
+              fullName: data.fullName.trim(),
+              email: cleanEmail,
+              mobile: cleanMobile,
+              department: data.department.trim(),
+              role: data.role,
+              status: data.status || 'invited',
+            }),
+          });
+          const resJson = await res.json();
+          if (!res.ok) {
+            throw new Error(resJson.error || 'Failed to create employee');
+          }
+          return resJson;
+        } catch (devErr: any) {
+          if (devErr.message && !devErr.message.includes('Failed to fetch')) {
+            throw devErr;
+          }
+        }
+      }
+
+      throw new Error(errMsg || 'Failed to create employee');
     }
 
     return result;
   },
 
-  async updateUserStatus(userId: string, status: 'active' | 'inactive'): Promise<void> {
+  async updateUserStatus(userId: string, status: 'active' | 'inactive' | 'invited'): Promise<void> {
     const { error } = await supabase.rpc('admin_update_employee_status', {
       p_user_id: userId,
       p_status: status,

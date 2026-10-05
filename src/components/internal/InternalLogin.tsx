@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { Button } from '../ui/Button';
 import { ForgotPasswordModal } from '../common/ForgotPasswordModal';
-import { Milk, ArrowLeft, Lock, Mail, ArrowRight, Shield } from 'lucide-react';
+import { ArrowLeft, Lock, Mail, ArrowRight, Shield } from 'lucide-react';
 
 export const InternalLogin: React.FC = () => {
   const { setPortal, login, addToast } = useDairy();
@@ -33,8 +33,8 @@ export const InternalLogin: React.FC = () => {
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
         {/* Header with Dairy ERP Brand */}
         <div className="p-6 bg-slate-900 text-white text-center relative">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-white/10 text-white rounded-xl border border-white/20 mb-2 shadow-inner">
-            <Milk className="w-7 h-7 text-white" />
+          <div className="inline-flex items-center justify-center p-2.5 bg-white rounded-2xl mb-3 shadow-md border border-slate-100 max-w-[200px]">
+            <img src="/logo.png" alt="Madhav Dairy" className="h-12 w-auto object-contain" />
           </div>
           <h1 className="text-xl font-bold tracking-tight">Madhav Dairy ERP</h1>
           <p className="text-xs text-blue-200 mt-1 uppercase tracking-wider font-semibold">

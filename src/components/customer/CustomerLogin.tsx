@@ -4,8 +4,7 @@ import { useTranslation } from '../../i18n/LanguageContext';
 import { LanguageSelector } from '../ui/LanguageSelector';
 import { CustomerRegister } from './CustomerRegister';
 import { ForgotPasswordModal } from '../common/ForgotPasswordModal';
-import { Button } from '../ui/Button';
-import { Milk, ArrowRight, Lock, Mail, Store } from 'lucide-react';
+import { ArrowRight, Lock, Mail } from 'lucide-react';
 
 export const CustomerLogin: React.FC = () => {
   const { setPortal, login, addToast } = useDairy();
@@ -48,108 +47,112 @@ export const CustomerLogin: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 sm:p-6 bg-slate-50 font-sans">
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-lg border border-slate-200 overflow-hidden">
+      <div className="w-full max-w-md bg-white rounded-3xl shadow-xl border border-slate-200 overflow-hidden">
         {/* Brand Banner */}
-        <div className="bg-blue-600 px-5 sm:px-6 py-6 text-white text-center relative overflow-hidden">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-100 bg-blue-700/70 px-2.5 py-0.5 rounded-full border border-blue-500/40">
+        <div className="bg-blue-600 px-6 py-7 text-white text-center relative overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-100 bg-blue-700/80 px-3 py-1 rounded-full border border-blue-500/40">
               Retailer Portal
             </span>
-            <div className="bg-white/10 backdrop-blur-xs rounded-lg px-1.5 py-0.5 text-white">
+            <div className="bg-white/10 backdrop-blur-xs rounded-xl px-2 py-1 text-white">
               <LanguageSelector variant="compact" />
             </div>
           </div>
 
-          <div className="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center mx-auto mb-2.5 shadow-inner">
-            <Milk className="w-6 h-6 text-white" />
+          <div className="inline-flex items-center justify-center p-2.5 bg-white rounded-2xl mb-3 shadow-md mx-auto max-w-[200px]">
+            <img src="/logo.png" alt="Madhav Dairy" className="h-12 w-auto object-contain" />
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">{t.common.appTitle}</h1>
-          <p className="text-blue-100 text-xs mt-0.5">{t.common.tagline}</p>
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">{t.common.appTitle}</h1>
+          <p className="text-blue-100 text-sm mt-1">{t.common.tagline}</p>
         </div>
 
         {/* Login Form */}
-        <div className="p-5 sm:p-6 space-y-4">
+        <div className="p-6 sm:p-7 space-y-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{t.customer.auth.loginTitle}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{t.customer.auth.loginSubtitle}</p>
+            <h2 className="text-xl font-bold text-slate-900">{t.customer.auth.loginTitle}</h2>
+            <p className="text-sm text-slate-500 mt-1">{t.customer.auth.loginSubtitle}</p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-3.5">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="block text-slate-700 font-bold text-xs mb-1">
+              <label className="block text-slate-800 font-bold text-sm mb-1.5">
                 Email Address
               </label>
               <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="email"
                   required
                   placeholder="name@example.com"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="w-full h-10 pl-10 pr-3.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-1 focus:ring-blue-100 transition-all"
+                  className="w-full h-12 min-h-[48px] pl-12 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-base focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-slate-700 font-bold text-xs">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-slate-800 font-bold text-sm">
                   {t.customer.auth.passwordLabel}
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsForgotModalOpen(true)}
-                  className="text-[11px] text-blue-600 hover:text-blue-800 font-semibold transition-colors"
+                  className="text-xs text-blue-600 hover:text-blue-800 font-bold transition-colors"
                 >
                   Forgot Password?
                 </button>
               </div>
               <div className="relative">
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <Lock className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="password"
                   required
                   placeholder={t.customer.auth.passwordPlaceholder}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="w-full h-10 pl-10 pr-3.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-xs sm:text-sm focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-1 focus:ring-blue-100 transition-all"
+                  className="w-full h-12 min-h-[48px] pl-12 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-slate-900 text-base focus:outline-none focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
             </div>
 
-            <div className="pt-1">
-              <Button
+            <div className="pt-2">
+              <button
                 type="submit"
-                variant="primary"
-                size="md"
-                className="w-full h-10 sm:h-11 text-xs sm:text-sm font-bold shadow-2xs"
-                isLoading={isLoggingIn}
-                icon={<ArrowRight className="w-4 h-4 stroke-[2.5]" />}
+                disabled={isLoggingIn}
+                className="w-full min-h-[50px] px-5 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-base shadow-sm flex items-center justify-center gap-2 transition-all active:scale-[0.99] disabled:opacity-60"
               >
-                {t.customer.auth.loginButton}
-              </Button>
+                {isLoggingIn ? (
+                  <span>Signing in...</span>
+                ) : (
+                  <>
+                    <span>{t.customer.auth.loginButton}</span>
+                    <ArrowRight className="w-5 h-5 stroke-[2.5]" />
+                  </>
+                )}
+              </button>
             </div>
           </form>
 
           {/* Registration Link */}
-          <div className="text-center pt-3 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-600">
+          <div className="text-center pt-4 border-t border-slate-100 flex items-center justify-center gap-2 text-sm text-slate-600">
             <span>{t.customer.auth.noAccount}</span>
             <button
               onClick={() => setIsRegistering(true)}
-              className="font-bold text-blue-600 hover:text-blue-700 underline underline-offset-2"
+              className="font-bold text-blue-600 hover:text-blue-800 underline underline-offset-2"
             >
               {t.customer.auth.createAccount}
             </button>
           </div>
 
-          {/* Clean entry navigation link to internal staff ERP login */}
+          {/* Staff Login Link */}
           <div className="pt-3 text-center border-t border-slate-100">
             <button
               onClick={() => setPortal('internal_login')}
-              className="text-xs text-slate-500 hover:text-slate-800 font-semibold transition-colors inline-flex items-center gap-1"
+              className="min-h-[44px] text-xs sm:text-sm text-slate-500 hover:text-slate-900 font-semibold transition-colors inline-flex items-center gap-1.5"
             >
-              <span>Dairy Staff & Management ERP Login &rarr;</span>
+              <span>Dairy Staff & Operations ERP Portal &rarr;</span>
             </button>
           </div>
         </div>
@@ -159,8 +162,6 @@ export const CustomerLogin: React.FC = () => {
       <ForgotPasswordModal
         isOpen={isForgotModalOpen}
         onClose={() => setIsForgotModalOpen(false)}
-        defaultEmail={email}
-        portalType="customer"
       />
     </div>
   );

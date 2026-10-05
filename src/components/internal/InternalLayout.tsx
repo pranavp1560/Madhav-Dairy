@@ -20,6 +20,9 @@ import { ReportsView } from './ReportsView';
 import { UsersView } from './UsersView';
 import { RolesPermissionsView } from './RolesPermissionsView';
 import { ProductsAdminView } from './ProductsAdminView';
+import { ProductCategoriesView } from './ProductCategoriesView';
+import { SalesChannelsView } from './SalesChannelsView';
+import { ProductPricingView } from './ProductPricingView';
 import { SettingsView } from './SettingsView';
 
 // Modals
@@ -139,6 +142,15 @@ export const InternalLayout: React.FC = () => {
         return <RolesPermissionsView />;
       case 'products':
         return <ProductsAdminView />;
+      case 'categories':
+      case 'product-categories':
+        return <ProductCategoriesView />;
+      case 'channels':
+      case 'sales-channels':
+        return <SalesChannelsView />;
+      case 'pricing':
+      case 'product-pricing':
+        return <ProductPricingView />;
       case 'settings':
         return <SettingsView />;
       default:

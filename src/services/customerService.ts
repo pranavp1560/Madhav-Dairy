@@ -1,11 +1,16 @@
 import { supabase } from '../lib/supabase';
 import { Retailer } from '../types/dairy';
 
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 export const customerService = {
   async fetchCustomers(): Promise<Retailer[]> {
     const { data: custs, error: custErr } = await supabase
       .from('customers')
-      .select('*')
+      .select(`
+        *,
+        sales_channels(id, name, code)
+      `)
       .order('business_name');
 
     if (custErr) throw custErr;
@@ -13,12 +18,12 @@ export const customerService = {
     // Fetch live outstanding balances from view_customer_outstanding
     const { data: outstandings } = await supabase
       .from('view_customer_outstanding')
-      .select('customer_id, current_outstanding');
+      .select('customer_id, outstanding_amount');
 
     const balanceMap: Record<string, number> = {};
     if (outstandings) {
       outstandings.forEach((o: any) => {
-        balanceMap[o.customer_id] = Number(o.current_outstanding || 0);
+        balanceMap[o.customer_id] = Number(o.outstanding_amount || 0);
       });
     }
 
@@ -36,6 +41,9 @@ export const customerService = {
       paymentTerms: `Net ${c.payment_terms_days || 15} Days`,
       status: c.status === 'active' ? 'active' : 'inactive',
       lastOrderDate: c.last_order_at ? c.last_order_at.split('T')[0] : '',
+      salesChannelId: c.sales_channel_id || undefined,
+      salesChannelName: c.sales_channels?.name || 'Retail',
+      salesChannelCode: c.sales_channels?.code || 'RETAIL',
     }));
   },
 
@@ -48,12 +56,25 @@ export const customerService = {
     email?: string;
     gstin?: string;
     creditLimit?: number;
+    salesChannelId?: string;
   }): Promise<Retailer> {
+    // Determine sales channel ID
+    let channelId = data.salesChannelId;
+    if (!channelId) {
+      const { data: defaultCh } = await supabase
+        .from('sales_channels')
+        .select('id')
+        .eq('code', 'WHOLESALE')
+        .maybeSingle();
+
+      channelId = defaultCh?.id || 'c1000000-0000-0000-0000-000000000002';
+    }
+
     // Generate sequential customer code via document sequences or count
     let customerCode = 'RET-1001';
     try {
       const { data: seqData, error: seqErr } = await supabase.rpc('next_document_number', {
-        p_org_id: '00000000-0000-0000-0000-000000000001',
+        p_org_id: DEFAULT_ORG_ID,
         p_doc_type: 'customer',
         p_prefix: 'RET',
         p_padding: 4,
@@ -72,7 +93,7 @@ export const customerService = {
     const { data: newCust, error } = await supabase
       .from('customers')
       .insert({
-        organization_id: '00000000-0000-0000-0000-000000000001',
+        organization_id: DEFAULT_ORG_ID,
         customer_code: customerCode,
         business_name: data.businessName.trim(),
         owner_name: data.ownerName.trim(),
@@ -84,8 +105,9 @@ export const customerService = {
         credit_limit: data.creditLimit || 50000,
         payment_terms_days: 15,
         status: 'active',
+        sales_channel_id: channelId,
       })
-      .select()
+      .select('*, sales_channels(id, name, code)')
       .single();
 
     if (error) throw error;
@@ -104,6 +126,18 @@ export const customerService = {
       paymentTerms: `Net ${newCust.payment_terms_days || 15} Days`,
       status: 'active',
       lastOrderDate: '',
+      salesChannelId: newCust.sales_channel_id,
+      salesChannelName: (newCust as any).sales_channels?.name || 'Wholesale',
+      salesChannelCode: (newCust as any).sales_channels?.code || 'WHOLESALE',
     };
+  },
+
+  async updateCustomerChannel(customerId: string, channelId: string): Promise<void> {
+    const { error } = await supabase
+      .from('customers')
+      .update({ sales_channel_id: channelId })
+      .eq('id', customerId);
+
+    if (error) throw error;
   }
 };

@@ -4,7 +4,8 @@ import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
 import { Order, OrderStatus } from '../../types/dairy';
-import { ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, Truck } from 'lucide-react';
+import { ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, Truck, Plus, Pencil, Edit2 } from 'lucide-react';
+import { OrderFormModal } from './OrderFormModal';
 
 interface OrdersViewProps {
   onSelectRetailer: (id: string) => void;
@@ -17,6 +18,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const [selectedRetailer, setSelectedRetailer] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+
+  const handleOpenCreateOrder = () => {
+    setOrderToEdit(null);
+    setIsOrderModalOpen(true);
+  };
+
+  const handleOpenEditOrder = (order: Order) => {
+    setOrderToEdit(order);
+    setIsOrderModalOpen(true);
+  };
 
   const filteredOrders = orders.filter(o => {
     const matchesSearch =
@@ -49,9 +62,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
             Incoming orders from retailer customer portal and direct dairy telephone bookings
           </p>
         </div>
-        <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
-          {orders.length} Total Orders
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200">
+            {orders.length} Total Orders
+          </span>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={<Plus className="w-4 h-4" />}
+            onClick={handleOpenCreateOrder}
+          >
+            Create New Order
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -163,6 +186,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                     </td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenEditOrder(order)}
+                          className="px-2 py-1 rounded bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 text-[11px] font-medium transition-colors inline-flex items-center gap-1"
+                          title="Edit order items & pricing"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          <span>Edit</span>
+                        </button>
                         <button
                           onClick={() => setViewingOrder(order)}
                           className="px-2 py-1 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-600 text-slate-700 text-[11px] font-medium transition-colors"
@@ -294,13 +325,27 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
             </div>
 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between">
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setViewingOrder(null)}
-              >
-                Close Drawer
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setViewingOrder(null)}
+                >
+                  Close Drawer
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Pencil className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    const toEdit = viewingOrder;
+                    setViewingOrder(null);
+                    handleOpenEditOrder(toEdit);
+                  }}
+                >
+                  Edit Order
+                </Button>
+              </div>
               {nextStatusMap[viewingOrder.status] && (
                 <Button
                   variant="primary"
@@ -317,6 +362,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
           </div>
         )}
       </Drawer>
+
+      {/* Order Form Modal (Create and Edit Orders) */}
+      <OrderFormModal
+        isOpen={isOrderModalOpen}
+        onClose={() => {
+          setIsOrderModalOpen(false);
+          setOrderToEdit(null);
+        }}
+        orderToEdit={orderToEdit}
+      />
     </div>
   );
 };

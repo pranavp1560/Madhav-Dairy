@@ -17,7 +17,10 @@ import {
   RawMaterial,
   RawMaterialMovement,
   User,
-  RolePermission
+  RolePermission,
+  CategoryItem,
+  SalesChannel,
+  ProductChannelPrice
 } from '../types/dairy';
 import {
   authService,
@@ -33,6 +36,7 @@ import {
   expiryService,
   notificationService,
   userService,
+  channelService,
   UserSessionProfile
 } from '../services';
 
@@ -94,6 +98,9 @@ interface DairyContextType {
   rawMaterialMovements: RawMaterialMovement[];
   users: User[];
   rolePermissions: RolePermission[];
+  categories: CategoryItem[];
+  salesChannels: SalesChannel[];
+  channelPrices: ProductChannelPrice[];
 
   // Cart
   cart: CartItem[];
@@ -106,18 +113,38 @@ interface DairyContextType {
   placeOrder: (notes?: string, deliveryDate?: string) => Promise<Order>;
   reorder: (orderId: string) => void;
 
+  // Categories & Channels & Pricing Actions
+  addCategory: (data: { name: string; nameMr?: string; nameHi?: string; description?: string }) => Promise<CategoryItem>;
+  updateCategory: (id: string, data: { name?: string; nameMr?: string; nameHi?: string; description?: string; isActive?: boolean }) => Promise<void>;
+  deleteCategory: (id: string) => Promise<void>;
+  toggleCategoryActive: (id: string, isActive: boolean) => Promise<void>;
+  addSalesChannel: (data: { name: string; code: string; description?: string }) => Promise<SalesChannel>;
+  updateSalesChannel: (id: string, data: { name?: string; code?: string; description?: string; isActive?: boolean }) => Promise<void>;
+  deleteSalesChannel: (id: string) => Promise<void>;
+  toggleSalesChannelActive: (id: string, isActive: boolean) => Promise<void>;
+  saveChannelPrice: (data: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }) => Promise<ProductChannelPrice>;
+  saveMultipleChannelPrices: (prices: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }[]) => Promise<void>;
+  refreshPricingData: () => Promise<void>;
+
   // Business Actions
   addProduct: (data: {
     name: string;
     nameMr?: string;
     nameHi?: string;
     categoryName?: string;
+    categoryId?: string;
     packSize: string;
     unit: string;
     mrp: number;
     sellingPrice: number;
     shelfLifeDays: number;
     description?: string;
+    minStockThreshold?: number;
+    channelPrices?: {
+      channelId: string;
+      standardPrice: number;
+      minimumPrice: number;
+    }[];
   }) => Promise<Product>;
 
   createProductionBatch: (data: {
@@ -179,7 +206,7 @@ interface DairyContextType {
     notes?: string;
   }) => Promise<boolean>;
 
-  updateUserStatus: (userId: string, status: 'active' | 'inactive') => Promise<void>;
+  updateUserStatus: (userId: string, status: 'active' | 'inactive' | 'invited') => Promise<void>;
   updateUserRole: (userId: string, role: InternalRole) => Promise<void>;
   registerRetailer: (data: {
     businessName: string;
@@ -190,9 +217,33 @@ interface DairyContextType {
     address: string;
     area?: string;
     creditLimit?: number;
+    salesChannelId?: string;
   }) => Promise<Retailer>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  createInternalOrder: (params: {
+    customerId: string;
+    items: {
+      productId: string;
+      productName?: string;
+      quantity: number;
+      unitPrice: number;
+    }[];
+    notes?: string;
+    deliveryDate?: string;
+  }) => Promise<Order>;
+  editOrder: (orderId: string, params: {
+    customerId?: string;
+    items: {
+      productId: string;
+      productName?: string;
+      quantity: number;
+      unitPrice: number;
+    }[];
+    notes?: string;
+    deliveryDate?: string;
+    status?: OrderStatus;
+  }) => Promise<Order>;
   toggleExpiryRule: (ruleId: string) => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: (recipientType: 'customer' | 'internal') => Promise<void>;
@@ -238,6 +289,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [rawMaterialMovements, setRawMaterialMovements] = useState<RawMaterialMovement[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [rolePermissions, setRolePermissions] = useState<RolePermission[]>([]);
+  const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [salesChannels, setSalesChannels] = useState<SalesChannel[]>([]);
+  const [channelPrices, setChannelPrices] = useState<ProductChannelPrice[]>([]);
 
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -271,9 +325,13 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsLoading(true);
       setError(null);
 
-      // 1. Always load products (public catalog accessible to both customers and staff)
-      const prods = await productService.fetchProducts();
+      // 1. Always load products & categories
+      const [prods, cats] = await Promise.all([
+        productService.fetchProducts(),
+        productService.fetchCategoriesDetail(),
+      ]);
       setProducts(prods);
+      setCategories(cats);
 
       // Check current session to load role-appropriate domain data
       const session = await authService.getSession();
@@ -293,6 +351,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setExpiryAlerts([]);
         setNotifications([]);
         setUsers([]);
+        setSalesChannels([]);
+        setChannelPrices([]);
         return;
       }
 
@@ -306,21 +366,28 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (profile.customer) {
           setCurrentRetailer(profile.customer);
-        } else if (custs.length > 0) {
+        } else if (profile.customerId) {
+          const matched = custs.find(c => c.id === profile.customerId);
+          if (matched) setCurrentRetailer(matched);
+        } else if (custs.length === 1) {
           setCurrentRetailer(custs[0]);
         }
 
-        const [ords, invs, notifs, expAlerts] = await Promise.all([
+        const [ords, invs, pays, notifs, expAlerts, prices] = await Promise.all([
           orderService.fetchOrders(),
           invoiceService.fetchInvoices(),
+          paymentService.fetchPayments(),
           notificationService.fetchNotifications(),
           expiryService.fetchExpiryAlerts(),
+          productService.fetchChannelPrices(),
         ]);
 
         setOrders(ords);
         setInvoices(invs);
+        setPayments(pays);
         setNotifications(notifs);
         setExpiryAlerts(expAlerts);
+        setChannelPrices(prices);
 
       } else if (profile.userType === 'internal') {
         // Internal staff view: load full organization data permitted by RLS
@@ -339,7 +406,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           expA,
           notifs,
           usrs,
-          rPerms
+          rPerms,
+          channels,
+          prices
         ] = await Promise.all([
           customerService.fetchCustomers(),
           orderService.fetchOrders(),
@@ -356,6 +425,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           notificationService.fetchNotifications(),
           userService.fetchUsers(),
           userService.fetchRolePermissions(),
+          channelService.fetchSalesChannels(),
+          productService.fetchChannelPrices(),
         ]);
 
         setRetailers(custs);
@@ -373,6 +444,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setNotifications(notifs);
         setUsers(usrs);
         setRolePermissions(rPerms);
+        setSalesChannels(channels);
+        setChannelPrices(prices);
       }
     } catch (err: any) {
       console.error('Data refresh error:', err);
@@ -384,8 +457,16 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Restore Supabase Auth session on component mount
   useEffect(() => {
-    // Check for password recovery hash in URL
-    if (window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery')) {
+    // Check for password recovery hash or employee invitation hash in URL
+    const hash = window.location.hash || '';
+    const search = window.location.search || '';
+    const isRecoveryOrInvite = 
+      hash.includes('type=recovery') || 
+      search.includes('type=recovery') ||
+      hash.includes('type=invite') || 
+      search.includes('type=invite');
+
+    if (isRecoveryOrInvite) {
       setIsPasswordRecovery(true);
     }
 
@@ -396,6 +477,14 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (session?.user) {
           const profile = await authService.getUserProfile(session.user.id);
           if (profile) {
+            if (profile.status === 'invited') {
+              // Employee accessed via invitation link: keep session active and prompt password setup
+              setCurrentUser(profile);
+              setIsPasswordRecovery(true);
+              setPortal('internal');
+              return;
+            }
+
             if (profile.status !== 'active') {
               await authService.signOut();
               setCurrentUser(null);
@@ -438,15 +527,29 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     // Listen to Supabase auth state change
     const { data: { subscription } } = authService.onAuthStateChange(async (event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
+      const curHash = window.location.hash || '';
+      const curSearch = window.location.search || '';
+      const isRecoveryOrInviteNow = 
+        curHash.includes('type=recovery') || 
+        curSearch.includes('type=recovery') ||
+        curHash.includes('type=invite') || 
+        curSearch.includes('type=invite');
+
+      if (event === 'PASSWORD_RECOVERY' || (session?.user && isRecoveryOrInviteNow)) {
         setIsPasswordRecovery(true);
-        return;
       }
 
       if (session?.user) {
         try {
           const profile = await authService.getUserProfile(session.user.id);
           if (profile) {
+            if (profile.status === 'invited') {
+              setCurrentUser(profile);
+              setIsPasswordRecovery(true);
+              setPortal('internal');
+              return;
+            }
+
             if (profile.status !== 'active') {
               await authService.signOut();
               setCurrentUser(null);
@@ -528,6 +631,17 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const prod = products.find(p => p.id === productId);
     if (!prod) return;
 
+    // Check if customer has channel-specific standard price
+    let effectivePrice = prod.defaultPrice;
+    if (currentRetailer?.salesChannelId) {
+      const cp = (prod.channelPrices || channelPrices).find(
+        c => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
+      );
+      if (cp) {
+        effectivePrice = cp.standardPrice;
+      }
+    }
+
     setCart(prev => {
       const existing = prev.find(i => i.product.id === productId);
       if (existing) {
@@ -537,7 +651,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             : item
         );
       } else {
-        return [...prev, { product: prod, quantity: qty }];
+        return [...prev, { product: { ...prod, defaultPrice: effectivePrice }, quantity: qty }];
       }
     });
     addToast(`Added ${prod.name} to cart`, 'info');
@@ -628,16 +742,24 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     nameMr?: string;
     nameHi?: string;
     categoryName?: string;
+    categoryId?: string;
     packSize: string;
     unit: string;
     mrp: number;
     sellingPrice: number;
     shelfLifeDays: number;
     description?: string;
+    minStockThreshold?: number;
+    channelPrices?: {
+      channelId: string;
+      standardPrice: number;
+      minimumPrice: number;
+    }[];
   }): Promise<Product> => {
     try {
       const newProd = await productService.createProduct(data);
       setProducts(prev => [...prev, newProd]);
+      await refreshPricingData();
       addToast(`Product "${newProd.name}" added to catalog!`, 'success');
       return newProd;
     } catch (err: any) {
@@ -816,7 +938,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // User & Roles Management
-  const updateUserStatus = async (userId: string, status: 'active' | 'inactive') => {
+  const updateUserStatus = async (userId: string, status: 'active' | 'inactive' | 'invited') => {
     try {
       await userService.updateUserStatus(userId, status);
       setUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
@@ -836,6 +958,137 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Categories, Channels, and Pricing Actions
+  const refreshPricingData = async () => {
+    try {
+      const [prods, cats, chs, prs] = await Promise.all([
+        productService.fetchProducts(),
+        productService.fetchCategoriesDetail(),
+        channelService.fetchSalesChannels(),
+        productService.fetchChannelPrices(),
+      ]);
+      setProducts(prods);
+      setCategories(cats);
+      setSalesChannels(chs);
+      setChannelPrices(prs);
+    } catch (err: any) {
+      console.error('Failed to refresh pricing data:', err);
+    }
+  };
+
+  const addCategory = async (data: { name: string; nameMr?: string; nameHi?: string; description?: string }) => {
+    try {
+      const newCat = await productService.createCategory(data);
+      setCategories(prev => [...prev, newCat]);
+      addToast(`Category "${newCat.name}" created!`, 'success');
+      return newCat;
+    } catch (err: any) {
+      addToast(`Failed to create category: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateCategory = async (id: string, data: { name?: string; nameMr?: string; nameHi?: string; description?: string; isActive?: boolean }) => {
+    try {
+      await productService.updateCategory(id, data);
+      await refreshPricingData();
+      addToast('Category updated successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update category: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteCategory = async (id: string) => {
+    try {
+      await productService.deleteCategory(id);
+      setCategories(prev => prev.filter(c => c.id !== id));
+      addToast('Category deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const toggleCategoryActive = async (id: string, isActive: boolean) => {
+    try {
+      await productService.toggleCategoryActive(id, isActive);
+      setCategories(prev => prev.map(c => c.id === id ? { ...c, isActive } : c));
+      addToast(`Category ${isActive ? 'activated' : 'deactivated'}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update category status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const addSalesChannel = async (data: { name: string; code: string; description?: string }) => {
+    try {
+      const newChannel = await channelService.createSalesChannel(data);
+      setSalesChannels(prev => [...prev, newChannel]);
+      addToast(`Sales Channel "${newChannel.name}" added!`, 'success');
+      return newChannel;
+    } catch (err: any) {
+      addToast(`Failed to create sales channel: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateSalesChannel = async (id: string, data: { name?: string; code?: string; description?: string; isActive?: boolean }) => {
+    try {
+      await channelService.updateSalesChannel(id, data);
+      await refreshPricingData();
+      addToast('Sales channel updated successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update channel: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteSalesChannel = async (id: string) => {
+    try {
+      await channelService.deleteSalesChannel(id);
+      setSalesChannels(prev => prev.filter(ch => ch.id !== id));
+      addToast('Sales channel deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const toggleSalesChannelActive = async (id: string, isActive: boolean) => {
+    try {
+      await channelService.toggleSalesChannelActive(id, isActive);
+      setSalesChannels(prev => prev.map(ch => ch.id === id ? { ...ch, isActive } : ch));
+      addToast(`Channel ${isActive ? 'activated' : 'deactivated'}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to toggle channel status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const saveChannelPrice = async (data: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }) => {
+    try {
+      const saved = await productService.saveChannelPrice(data);
+      await refreshPricingData();
+      addToast('Channel pricing updated successfully', 'success');
+      return saved;
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const saveMultipleChannelPrices = async (prices: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }[]) => {
+    try {
+      await productService.saveMultipleChannelPrices(prices);
+      await refreshPricingData();
+      addToast('All channel prices saved successfully!', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
   // Internal Customer Creation from ERP
   const registerRetailer = async (data: {
     businessName: string;
@@ -846,6 +1099,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     address: string;
     area?: string;
     creditLimit?: number;
+    salesChannelId?: string;
   }): Promise<Retailer> => {
     try {
       const newRet = await customerService.registerCustomer({
@@ -856,6 +1110,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         address: data.address,
         area: data.area,
         creditLimit: data.creditLimit,
+        salesChannelId: data.salesChannelId,
       });
 
       setRetailers(prev => [...prev, newRet]);
@@ -875,6 +1130,66 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addToast(`Order status updated to ${status}`, 'success');
     } catch (err: any) {
       addToast(`Failed to update order: ${err.message}`, 'error');
+    }
+  };
+
+  // Internal Order Creation by Staff
+  const createInternalOrder = async (params: {
+    customerId: string;
+    items: {
+      productId: string;
+      productName?: string;
+      quantity: number;
+      unitPrice: number;
+    }[];
+    notes?: string;
+    deliveryDate?: string;
+  }): Promise<Order> => {
+    try {
+      const newOrder = await orderService.createOrder({
+        customerId: params.customerId,
+        items: params.items.map(i => ({
+          productId: i.productId,
+          productName: i.productName || products.find(p => p.id === i.productId)?.name || 'Product',
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
+        notes: params.notes || 'Created via Staff Management Portal',
+        deliveryDate: params.deliveryDate,
+      });
+
+      setOrders(prev => [newOrder, ...prev]);
+      const latestNotifs = await notificationService.fetchNotifications();
+      setNotifications(latestNotifs);
+      addToast(`Order ${newOrder.orderNumber} created successfully!`, 'success');
+      return newOrder;
+    } catch (err: any) {
+      addToast(`Failed to create order: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Edit Existing Order by Staff
+  const editOrder = async (orderId: string, params: {
+    customerId?: string;
+    items: {
+      productId: string;
+      productName?: string;
+      quantity: number;
+      unitPrice: number;
+    }[];
+    notes?: string;
+    deliveryDate?: string;
+    status?: OrderStatus;
+  }): Promise<Order> => {
+    try {
+      const updatedOrder = await orderService.updateOrder(orderId, params);
+      setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+      addToast(`Order ${updatedOrder.orderNumber} updated successfully!`, 'success');
+      return updatedOrder;
+    } catch (err: any) {
+      addToast(`Failed to update order: ${err.message}`, 'error');
+      throw err;
     }
   };
 
@@ -947,6 +1262,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         rawMaterialMovements,
         users,
         rolePermissions,
+        categories,
+        salesChannels,
+        channelPrices,
 
         cart,
         cartCount,
@@ -957,6 +1275,18 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         clearCart,
         placeOrder,
         reorder,
+
+        addCategory,
+        updateCategory,
+        deleteCategory,
+        toggleCategoryActive,
+        addSalesChannel,
+        updateSalesChannel,
+        deleteSalesChannel,
+        toggleSalesChannelActive,
+        saveChannelPrice,
+        saveMultipleChannelPrices,
+        refreshPricingData,
 
         addProduct,
         createProductionBatch,
@@ -970,6 +1300,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateUserRole,
         registerRetailer,
         updateOrderStatus,
+        createInternalOrder,
+        editOrder,
         toggleExpiryRule,
         markNotificationRead,
         markAllNotificationsRead,

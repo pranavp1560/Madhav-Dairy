@@ -1,7 +1,7 @@
 import React from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { Modal } from '../common/Modal';
-import { Printer, Download, Milk, CheckCircle2 } from 'lucide-react';
+import { Printer, Download, CheckCircle2 } from 'lucide-react';
 
 interface InvoicePrintModalProps {
   invoiceId: string | null;
@@ -39,10 +39,8 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
           {/* Company Header */}
           <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold">
-                  <Milk className="w-5 h-5" />
-                </div>
+              <div className="flex items-center gap-3 mb-2">
+                <img src="/logo.png" alt="Madhav Dairy" className="h-10 w-auto object-contain" />
                 <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">
                   Madhav Dairy Private Limited
                 </h1>

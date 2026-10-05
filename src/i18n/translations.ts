@@ -36,6 +36,7 @@ export interface Translations {
       home: string;
       products: string;
       orders: string;
+      payments: string;
       alerts: string;
       profile: string;
     };
@@ -137,6 +138,25 @@ export interface Translations {
       supportHotline: string;
       logoutConfirm: string;
     };
+    payments: {
+      title: string;
+      subtitle: string;
+      outstanding: string;
+      creditLimit: string;
+      paymentTerms: string;
+      recentInvoices: string;
+      paymentHistory: string;
+      noInvoices: string;
+      noPayments: string;
+      invoiceNumber: string;
+      amount: string;
+      status: string;
+      paymentDate: string;
+      receiptNumber: string;
+      method: string;
+      bankDetails: string;
+      bankHelp: string;
+    };
     auth: {
       loginTitle: string;
       loginSubtitle: string;
@@ -182,6 +202,9 @@ export interface Translations {
       users: string;
       rolesPermissions: string;
       products: string;
+      categories: string;
+      channels: string;
+      pricing: string;
       settings: string;
     };
     dashboard: {
@@ -251,6 +274,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         home: 'Home',
         products: 'Products',
         orders: 'Orders',
+        payments: 'Payments',
         alerts: 'Alerts',
         profile: 'Profile',
       },
@@ -352,6 +376,25 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         supportHotline: '+91 98220 12345 (7 AM - 9 PM)',
         logoutConfirm: 'Are you sure you want to log out?',
       },
+      payments: {
+        title: 'Payments & Outstanding',
+        subtitle: 'Clear summary of your pending dues and payment receipts',
+        outstanding: 'Current Outstanding',
+        creditLimit: 'Approved Credit Limit',
+        paymentTerms: 'Payment Terms',
+        recentInvoices: 'Recent Invoices',
+        paymentHistory: 'Payment Receipts',
+        noInvoices: 'No invoices found.',
+        noPayments: 'No payment receipts found.',
+        invoiceNumber: 'Invoice #',
+        amount: 'Amount',
+        status: 'Status',
+        paymentDate: 'Payment Date',
+        receiptNumber: 'Receipt #',
+        method: 'Mode',
+        bankDetails: 'Bank & UPI Settlement Details',
+        bankHelp: 'Pay your balance directly via UPI or NEFT transfer',
+      },
       auth: {
         loginTitle: 'Retailer Login',
         loginSubtitle: 'Enter your registered mobile number to order dairy products',
@@ -397,6 +440,9 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         users: 'Users',
         rolesPermissions: 'Roles & Permissions',
         products: 'Products Catalog',
+        categories: 'Product Categories',
+        channels: 'Sales Channels',
+        pricing: 'Channel Pricing',
         settings: 'Settings',
       },
       dashboard: {
@@ -464,6 +510,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         home: 'मुख्य पान',
         products: 'उत्पादने',
         orders: 'ऑर्डर्स',
+        payments: 'पेमेंट्स',
         alerts: 'सूचना',
         profile: 'खाते',
       },
@@ -565,6 +612,25 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         supportHotline: '+९१ ९८२२० १२३४५ (सकाळी ७ ते रात्री ९)',
         logoutConfirm: 'तुम्हाला बाहेर पडायचे आहे का?',
       },
+      payments: {
+        title: 'पेमेंट्स व थकबाकी',
+        subtitle: 'तुमची शिल्लक थकबाकी आणि जमा पावत्या',
+        outstanding: 'सध्याची थकबाकी',
+        creditLimit: 'मंजूर क्रेडिट मर्यादा',
+        paymentTerms: 'पेमेंट अटी',
+        recentInvoices: 'अलीकडील इनव्हॉइस',
+        paymentHistory: 'पेमेंट पावत्या',
+        noInvoices: 'कोणतेही इनव्हॉइस आढळले नाही.',
+        noPayments: 'कोणत्याही पेमेंट पावत्या आढळल्या नाहीत.',
+        invoiceNumber: 'इनव्हॉइस क्र.',
+        amount: 'रक्कम',
+        status: 'स्थिती',
+        paymentDate: 'पेमेंट तारीख',
+        receiptNumber: 'पावती क्र.',
+        method: 'माध्यम',
+        bankDetails: 'बँक व UPI तपशील',
+        bankHelp: 'UPI किंवा NEFT द्वारे थेट रक्कम भरा',
+      },
       auth: {
         loginTitle: 'दुकानदार लॉगिन',
         loginSubtitle: 'डेअरी उत्पादने मागवण्यासाठी नोंदणीकृत मोबाईल नंबर टाका',
@@ -610,6 +676,9 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         users: 'वापरकर्ते',
         rolesPermissions: 'अधिकार व परवानग्या',
         products: 'उत्पादने कॅटलॉग',
+        categories: 'उत्पादन वर्ग',
+        channels: 'विक्री चॅनल्स',
+        pricing: 'चॅनलनुसार दर',
         settings: 'सेटिंग्ज',
       },
       dashboard: {
@@ -677,6 +746,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         home: 'मुख्य पृष्ठ',
         products: 'उत्पाद',
         orders: 'ऑर्डर्स',
+        payments: 'पेमेंट्स',
         alerts: 'सूचनाएं',
         profile: 'प्रोफ़ाइल',
       },
@@ -778,6 +848,25 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         supportHotline: '+91 98220 12345 (सुबह 7 से रात 9)',
         logoutConfirm: 'क्या आप लॉग आउट करना चाहते हैं?',
       },
+      payments: {
+        title: 'पेमेंट्स व बकाया राशि',
+        subtitle: 'आपकी लंबित बकाया राशि और भुगतान रसीदें',
+        outstanding: 'वर्तमान बकाया राशि',
+        creditLimit: 'स्वीकृत क्रेडिट सीमा',
+        paymentTerms: 'भुगतान की शर्तें',
+        recentInvoices: 'हाल के बिल (इनवॉइस)',
+        paymentHistory: 'भुगतान रसीदें',
+        noInvoices: 'कोई इनवॉइस नहीं मिला।',
+        noPayments: 'कोई भुगतान रसीद नहीं मिली।',
+        invoiceNumber: 'इनवॉइस क्र.',
+        amount: 'राशि',
+        status: 'स्थिति',
+        paymentDate: 'भुगतान की तारीख',
+        receiptNumber: 'रसीद क्र.',
+        method: 'माध्यम',
+        bankDetails: 'बैंक व UPI विवरण',
+        bankHelp: 'UPI या NEFT के माध्यम से सीधे बकाया राशि का भुगतान करें',
+      },
       auth: {
         loginTitle: 'दुकानदार लॉगिन',
         loginSubtitle: 'डेयरी उत्पाद ऑर्डर करने के लिए पंजीकृत मोबाइल नंबर दर्ज करें',
@@ -823,6 +912,9 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         users: 'उपयोगकर्ता',
         rolesPermissions: 'भूमिका व अनुमतियां',
         products: 'उत्पाद सूची',
+        categories: 'उत्पाद श्रेणियां',
+        channels: 'बिक्री चैनल',
+        pricing: 'चैनल-वार मूल्य निर्धारण',
         settings: 'सेटिंग्स',
       },
       dashboard: {

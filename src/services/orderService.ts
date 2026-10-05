@@ -1,6 +1,8 @@
 import { supabase } from '../lib/supabase';
 import { Order, OrderItem, OrderStatus } from '../types/dairy';
 
+const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+
 export const orderService = {
   async fetchOrders(): Promise<Order[]> {
     const { data: ordersData, error: oErr } = await supabase
@@ -18,7 +20,12 @@ export const orderService = {
         total_amount,
         payment_status,
         notes,
-        customers(business_name),
+        customers(
+          id,
+          business_name,
+          sales_channel_id,
+          sales_channels(id, name, code)
+        ),
         order_items(
           id,
           product_sku_id,
@@ -42,7 +49,7 @@ export const orderService = {
         return {
           productId: prod?.id || it.product_sku_id,
           productName: prod?.name || 'Dairy Product',
-          unit: it.product_skus?.packSize || it.product_skus?.unit || 'pack',
+          unit: it.product_skus?.pack_size || it.product_skus?.unit || 'pack',
           quantity: Number(it.quantity),
           unitPrice: Number(it.unit_price),
           totalPrice: Number(it.line_total),
@@ -54,6 +61,9 @@ export const orderService = {
         orderNumber: o.order_number.startsWith('#') ? o.order_number : `#${o.order_number}`,
         retailerId: o.customer_id,
         retailerName: o.customers?.business_name || 'Retailer Customer',
+        retailerChannelId: o.customers?.sales_channel_id,
+        retailerChannelName: o.customers?.sales_channels?.name,
+        retailerChannelCode: o.customers?.sales_channels?.code,
         orderDate: o.order_date,
         deliveryDate: o.requested_delivery_date || undefined,
         status: o.status as OrderStatus,
@@ -63,6 +73,37 @@ export const orderService = {
         items,
       };
     });
+  },
+
+  async resolveCustomerChannelPricing(customerId: string): Promise<Record<string, { standardPrice: number; minimumPrice: number; channelName: string }>> {
+    const { data: customer } = await supabase
+      .from('customers')
+      .select('sales_channel_id, sales_channels(name)')
+      .eq('id', customerId)
+      .maybeSingle();
+
+    if (!customer?.sales_channel_id) return {};
+
+    const channelName = (customer as any)?.sales_channels?.name || 'Channel';
+
+    const { data: prices } = await supabase
+      .from('product_channel_prices')
+      .select('product_id, standard_price, minimum_price')
+      .eq('channel_id', customer.sales_channel_id)
+      .eq('is_active', true);
+
+    const result: Record<string, { standardPrice: number; minimumPrice: number; channelName: string }> = {};
+    if (prices) {
+      prices.forEach((p: any) => {
+        result[p.product_id] = {
+          standardPrice: Number(p.standard_price),
+          minimumPrice: Number(p.minimum_price),
+          channelName,
+        };
+      });
+    }
+
+    return result;
   },
 
   async createOrder(params: {
@@ -76,13 +117,50 @@ export const orderService = {
     notes?: string;
     deliveryDate?: string;
   }): Promise<Order> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
+    // 1. Fetch customer's sales channel and validate minimum prices
+    const { data: customerData } = await supabase
+      .from('customers')
+      .select('id, sales_channel_id, sales_channels(id, name, code)')
+      .eq('id', params.customerId)
+      .maybeSingle();
+
+    const channelId = customerData?.sales_channel_id;
+    const channelName = (customerData as any)?.sales_channels?.name || 'Channel';
+
+    if (channelId) {
+      const { data: channelPrices } = await supabase
+        .from('product_channel_prices')
+        .select('product_id, standard_price, minimum_price, is_active')
+        .eq('channel_id', channelId)
+        .eq('is_active', true)
+        .in('product_id', params.items.map(i => i.productId));
+
+      const priceMap: Record<string, { standard: number; minimum: number }> = {};
+      if (channelPrices) {
+        channelPrices.forEach((cp: any) => {
+          priceMap[cp.product_id] = {
+            standard: Number(cp.standard_price),
+            minimum: Number(cp.minimum_price),
+          };
+        });
+      }
+
+      // Validate each item against the channel minimum price rule
+      for (const item of params.items) {
+        const rule = priceMap[item.productId];
+        if (rule && item.unitPrice < rule.minimum) {
+          throw new Error(
+            `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName}".`
+          );
+        }
+      }
+    }
 
     // Generate atomic sequence number
     let orderNum = `MD-${Math.floor(1000 + Math.random() * 9000)}`;
     try {
       const { data: seqNum, error: rpcErr } = await supabase.rpc('next_document_number', {
-        p_org_id: orgId,
+        p_org_id: DEFAULT_ORG_ID,
         p_doc_type: 'order',
         p_prefix: 'MD-ORD',
         p_padding: 4
@@ -91,16 +169,16 @@ export const orderService = {
         orderNum = seqNum;
       }
     } catch {
-      // Fallback to random unique sequence
+      // Fallback
     }
 
     const totalAmount = params.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
 
-    // 1. Insert order
+    // 2. Insert order header
     const { data: newOrder, error: oErr } = await supabase
       .from('orders')
       .insert({
-        organization_id: orgId,
+        organization_id: DEFAULT_ORG_ID,
         customer_id: params.customerId,
         order_number: orderNum,
         order_date: new Date().toISOString().split('T')[0],
@@ -118,7 +196,7 @@ export const orderService = {
 
     if (oErr) throw oErr;
 
-    // 2. Fetch default sku for each product to link order items
+    // 3. Fetch default sku for each product to link order items
     const { data: allSkus } = await supabase
       .from('product_skus')
       .select('id, product_id, pack_size, unit, selling_price')
@@ -131,7 +209,7 @@ export const orderService = {
       });
     }
 
-    // 3. Insert order items
+    // 4. Insert order line items (snapshots the unit_price permanently)
     const orderItemsRows = params.items.map(i => {
       const sku = skuMap[i.productId];
       const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
@@ -151,14 +229,18 @@ export const orderService = {
       .from('order_items')
       .insert(orderItemsRows);
 
-    if (itemsErr) console.warn('Could not insert line items:', itemsErr.message);
+    if (itemsErr) {
+      // Clean up order if item insertion failed (e.g. database trigger error)
+      await supabase.from('orders').delete().eq('id', newOrder.id);
+      throw new Error(`Order failed: ${itemsErr.message}`);
+    }
 
-    // 4. Record status history
+    // 5. Record status history
     await supabase.from('order_status_history').insert({
       order_id: newOrder.id,
       from_status: null,
       to_status: 'pending',
-      notes: 'Customer placed order'
+      notes: 'Order created with snapshotted channel pricing'
     });
 
     // Update customer last_order_at
@@ -171,6 +253,9 @@ export const orderService = {
       orderNumber: `#${orderNum}`,
       retailerId: params.customerId,
       retailerName: newOrder.customers?.business_name || 'Retailer',
+      retailerChannelId: channelId,
+      retailerChannelName: channelName,
+      retailerChannelCode: (customerData as any)?.sales_channels?.code,
       orderDate: newOrder.order_date,
       deliveryDate: params.deliveryDate,
       status: 'pending',
@@ -184,6 +269,166 @@ export const orderService = {
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         totalPrice: i.quantity * i.unitPrice
+      }))
+    };
+  },
+
+  async updateOrder(orderId: string, params: {
+    customerId?: string;
+    items: {
+      productId: string;
+      productName?: string;
+      quantity: number;
+      unitPrice: number;
+    }[];
+    notes?: string;
+    deliveryDate?: string;
+    status?: OrderStatus;
+  }): Promise<Order> {
+    if (!params.items || params.items.length === 0) {
+      throw new Error('Order must contain at least one item');
+    }
+
+    // 1. Fetch current order details
+    const { data: currentOrder, error: curErr } = await supabase
+      .from('orders')
+      .select('id, customer_id, order_number, order_date, status, notes, requested_delivery_date, payment_status, customers(id, business_name, sales_channel_id, sales_channels(name, code))')
+      .eq('id', orderId)
+      .single();
+
+    if (curErr) throw curErr;
+
+    const targetCustomerId = params.customerId || currentOrder.customer_id;
+
+    // 2. Fetch customer's sales channel and validate minimum prices
+    const { data: customerData } = await supabase
+      .from('customers')
+      .select('id, business_name, sales_channel_id, sales_channels(id, name, code)')
+      .eq('id', targetCustomerId)
+      .maybeSingle();
+
+    const channelId = customerData?.sales_channel_id;
+    const channelName = (customerData as any)?.sales_channels?.name || 'Channel';
+
+    if (channelId) {
+      const { data: channelPrices } = await supabase
+        .from('product_channel_prices')
+        .select('product_id, standard_price, minimum_price, is_active')
+        .eq('channel_id', channelId)
+        .eq('is_active', true)
+        .in('product_id', params.items.map(i => i.productId));
+
+      const priceMap: Record<string, { standard: number; minimum: number }> = {};
+      if (channelPrices) {
+        channelPrices.forEach((cp: any) => {
+          priceMap[cp.product_id] = {
+            standard: Number(cp.standard_price),
+            minimum: Number(cp.minimum_price),
+          };
+        });
+      }
+
+      // Enforce floor prices strictly
+      for (const item of params.items) {
+        const rule = priceMap[item.productId];
+        if (rule && item.unitPrice < rule.minimum) {
+          throw new Error(
+            `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName || 'selected product'}".`
+          );
+        }
+      }
+    }
+
+    // 3. Fetch SKUs for each product to link order items
+    const { data: allSkus } = await supabase
+      .from('product_skus')
+      .select('id, product_id, pack_size, unit, selling_price')
+      .in('product_id', params.items.map(i => i.productId));
+
+    const skuMap: Record<string, any> = {};
+    if (allSkus) {
+      allSkus.forEach((s: any) => {
+        if (!skuMap[s.product_id]) skuMap[s.product_id] = s;
+      });
+    }
+
+    const totalAmount = params.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
+
+    // 4. Update order header
+    const updatePayload: Record<string, any> = {
+      subtotal: totalAmount,
+      total_amount: totalAmount,
+    };
+    if (params.customerId) updatePayload.customer_id = params.customerId;
+    if (params.notes !== undefined) updatePayload.notes = params.notes;
+    if (params.deliveryDate !== undefined) updatePayload.requested_delivery_date = params.deliveryDate || null;
+    if (params.status) updatePayload.status = params.status;
+
+    const { error: updErr } = await supabase
+      .from('orders')
+      .update(updatePayload)
+      .eq('id', orderId);
+
+    if (updErr) throw updErr;
+
+    // 5. Replace order items: delete old, insert new
+    const { error: delErr } = await supabase
+      .from('order_items')
+      .delete()
+      .eq('order_id', orderId);
+
+    if (delErr) throw delErr;
+
+    const orderItemsRows = params.items.map(i => {
+      const sku = skuMap[i.productId];
+      const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
+      return {
+        order_id: orderId,
+        product_sku_id: skuId,
+        quantity: i.quantity,
+        unit_price: i.unitPrice,
+        discount_amount: 0,
+        tax_percent: 0,
+        tax_amount: 0,
+        line_total: i.quantity * i.unitPrice,
+      };
+    });
+
+    const { error: itemsErr } = await supabase
+      .from('order_items')
+      .insert(orderItemsRows);
+
+    if (itemsErr) throw itemsErr;
+
+    // 6. Record status history
+    await supabase.from('order_status_history').insert({
+      order_id: orderId,
+      from_status: currentOrder.status,
+      to_status: params.status || currentOrder.status,
+      notes: 'Order items and pricing modified by staff'
+    });
+
+    return {
+      id: orderId,
+      orderNumber: currentOrder.order_number.startsWith('#') ? currentOrder.order_number : `#${currentOrder.order_number}`,
+      retailerId: targetCustomerId,
+      retailerName: customerData?.business_name || (currentOrder as any).customers?.business_name || 'Retailer',
+      retailerChannelId: channelId,
+      retailerChannelName: channelName,
+      retailerChannelCode: (customerData as any)?.sales_channels?.code,
+      orderDate: currentOrder.order_date,
+      deliveryDate: params.deliveryDate !== undefined ? params.deliveryDate : currentOrder.requested_delivery_date,
+      status: (params.status || currentOrder.status) as OrderStatus,
+      totalAmount,
+      paymentStatus: (currentOrder as any).payment_status || 'unpaid',
+      notes: params.notes !== undefined ? params.notes : currentOrder.notes,
+      items: params.items.map(i => ({
+        productId: i.productId,
+        productName: i.productName || 'Dairy Product',
+        unit: skuMap[i.productId]?.pack_size || 'pack',
+        quantity: i.quantity,
+        unitPrice: i.unitPrice,
+        totalPrice: i.quantity * i.unitPrice,
       }))
     };
   },

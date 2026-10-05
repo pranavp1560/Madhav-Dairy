@@ -8,7 +8,7 @@ export interface UserSessionProfile {
   mobile: string;
   userType: 'internal' | 'customer';
   role: InternalRole | 'customer';
-  status: 'active' | 'inactive' | 'suspended';
+  status: 'active' | 'inactive' | 'suspended' | 'invited';
   department?: string;
   customerId?: string;
   customerName?: string;
@@ -79,7 +79,13 @@ export const authService = {
             credit_limit,
             payment_terms_days,
             status,
-            last_order_at
+            last_order_at,
+            sales_channel_id,
+            sales_channels (
+              id,
+              name,
+              code
+            )
           )
         `)
         .eq('auth_user_id', uid)
@@ -103,6 +109,9 @@ export const authService = {
           paymentTerms: `Net ${c.payment_terms_days || 15} Days`,
           status: c.status === 'active' ? 'active' : 'inactive',
           lastOrderDate: c.last_order_at ? c.last_order_at.split('T')[0] : '',
+          salesChannelId: c.sales_channel_id,
+          salesChannelName: c.sales_channels?.name || 'Customer',
+          salesChannelCode: c.sales_channels?.code || 'CUSTOMER',
         };
       }
     }
@@ -114,7 +123,7 @@ export const authService = {
       mobile: profile.mobile || '',
       userType: profile.user_type as 'internal' | 'customer',
       role: roleName,
-      status: (profile.status || 'active') as 'active' | 'inactive' | 'suspended',
+      status: (profile.status || 'active') as 'active' | 'inactive' | 'suspended' | 'invited',
       department: profile.department_id,
       customerId,
       customerName,
@@ -147,6 +156,9 @@ export const authService = {
 
     if (profile.status !== 'active') {
       await supabase.auth.signOut();
+      if (profile.status === 'invited') {
+        throw new Error('Your invitation is pending password setup. Please use the secure invitation link sent to your email.');
+      }
       throw new Error('Your account is inactive or suspended. Please contact management.');
     }
 
@@ -240,6 +252,19 @@ export const authService = {
       password: newPassword,
     });
     if (error) throw error;
+
+    try {
+      await supabase.rpc('complete_employee_invitation');
+    } catch (e) {
+      console.warn('complete_employee_invitation warning:', e);
+    }
+  },
+
+  async completeInvitation(): Promise<void> {
+    const { error } = await supabase.rpc('complete_employee_invitation');
+    if (error) {
+      console.warn('complete_employee_invitation error:', error.message);
+    }
   },
 
   async signOut(): Promise<void> {

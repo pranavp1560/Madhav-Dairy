@@ -62,7 +62,7 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
       isOpen={true}
       onClose={onClose}
       title={`Retailer 360° View: ${retailer.businessName}`}
-      subtitle={`Owner: ${retailer.ownerName} &bull; ${retailer.area} &bull; Mobile: +91 ${retailer.mobile}`}
+      subtitle={`Owner: ${retailer.ownerName} • ${retailer.area} • Channel: ${retailer.salesChannelName || 'Wholesale'} • Mobile: +91 ${retailer.mobile}`}
       maxWidth="5xl"
     >
       <div className="space-y-4 text-xs">
@@ -394,7 +394,13 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase">Email</span>
-                  <p className="text-slate-700">{retailer.email}</p>
+                  <p className="text-slate-700">{retailer.email || '—'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase">Sales Channel</span>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 mt-0.5">
+                    {retailer.salesChannelName || 'Wholesale'}
+                  </span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-[10px] text-slate-400 block uppercase">Delivery / Billing Address</span>

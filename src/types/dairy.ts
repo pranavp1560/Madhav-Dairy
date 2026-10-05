@@ -7,7 +7,46 @@ export type ProductCategory =
   | 'Sweets & Desserts'
   | 'Fresh Milk & Curd'
   | 'Paneer & Ghee'
-  | 'Beverages & Other';
+  | 'Beverages & Other'
+  | string;
+
+export interface CategoryItem {
+  id: string;
+  name: string;
+  nameMr?: string;
+  nameHi?: string;
+  description?: string;
+  isActive: boolean;
+  productCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SalesChannel {
+  id: string;
+  name: string;
+  code: string;
+  description?: string;
+  isActive: boolean;
+  customerCount?: number;
+  pricingCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProductChannelPrice {
+  id: string;
+  productId: string;
+  productName?: string;
+  channelId: string;
+  channelName?: string;
+  channelCode?: string;
+  standardPrice: number;
+  minimumPrice: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface ProductSku {
   id: string;
@@ -23,6 +62,7 @@ export interface Product {
   name: string;
   nameMr?: string;
   nameHi?: string;
+  categoryId?: string;
   category: ProductCategory;
   unit: string; // e.g. "500 ml pouch", "250g box", "1 kg tin"
   mrp?: number;
@@ -33,6 +73,9 @@ export interface Product {
   minStockThreshold: number;
   imageUrl?: string;
   skus?: ProductSku[];
+  channelPrices?: ProductChannelPrice[];
+  channelCount?: number;
+  pricingStatus?: 'configured' | 'partial' | 'not_configured';
 }
 
 export type BatchStatus = 'active' | 'near_expiry' | 'expired' | 'exhausted';
@@ -82,6 +125,9 @@ export interface Retailer {
   paymentTerms: string; // e.g. "Net 15 Days"
   status: 'active' | 'inactive';
   lastOrderDate: string;
+  salesChannelId?: string;
+  salesChannelName?: string;
+  salesChannelCode?: string;
 }
 
 export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'delivered' | 'cancelled';
@@ -101,6 +147,9 @@ export interface Order {
   orderNumber: string; // e.g. "#MD1025"
   retailerId: string;
   retailerName: string;
+  retailerChannelId?: string;
+  retailerChannelName?: string;
+  retailerChannelCode?: string;
   orderDate: string;
   deliveryDate?: string;
   status: OrderStatus;
@@ -263,9 +312,10 @@ export interface User {
   email: string;
   mobile: string;
   role: InternalRole;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'invited';
   lastLogin: string;
   department: string;
+  invitedAt?: string;
 }
 
 export interface RolePermission {

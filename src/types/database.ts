@@ -62,7 +62,46 @@ export interface Database {
           credit_limit: number;
           payment_terms_days: number;
           status: 'active' | 'inactive' | 'blocked';
+          sales_channel_id: string | null;
           last_order_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      product_categories: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          name_mr: string | null;
+          name_hi: string | null;
+          description: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      sales_channels: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          code: string;
+          description: string | null;
+          is_active: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      product_channel_prices: {
+        Row: {
+          id: string;
+          organization_id: string;
+          product_id: string;
+          channel_id: string;
+          standard_price: number;
+          minimum_price: number;
+          is_active: boolean;
           created_at: string;
           updated_at: string;
         };

@@ -28,8 +28,6 @@ export const LanguageProvider: React.FC<{ children: ReactNode }> = ({ children }
   const t = TRANSLATIONS[language];
 
   const getProductName = (product: { name: string; nameMr?: string; nameHi?: string }) => {
-    if (language === 'mr' && product.nameMr) return product.nameMr;
-    if (language === 'hi' && product.nameHi) return product.nameHi;
     return product.name;
   };
 

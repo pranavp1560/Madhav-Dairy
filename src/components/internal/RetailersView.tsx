@@ -12,15 +12,22 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
   onSelectRetailer,
   onOpenRecordPayment,
 }) => {
-  const { retailers } = useDairy();
+  const { retailers, salesChannels } = useDairy();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedChannel, setSelectedChannel] = useState('all');
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
 
-  const filteredRetailers = retailers.filter(r =>
-    r.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    r.area.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredRetailers = retailers.filter(r => {
+    const matchesSearch =
+      r.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      r.area.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesChannel =
+      selectedChannel === 'all' ||
+      r.salesChannelId === selectedChannel ||
+      (!r.salesChannelId && salesChannels.find(c => c.id === selectedChannel)?.code === 'WHOLESALE');
+    return matchesSearch && matchesChannel;
+  });
 
   return (
     <div className="space-y-6">
@@ -57,21 +64,37 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
         </div>
       </div>
 
-      {/* Search */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
-        <div className="relative w-full max-w-sm">
-          <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
-            <Search className="w-4 h-4" />
-          </span>
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search by store name, proprietor or area..."
-            className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:outline-none"
-          />
+      {/* Search & Channel Filter */}
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-2.5 w-full sm:w-auto">
+          <div className="relative w-full sm:w-72">
+            <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+              <Search className="w-4 h-4" />
+            </span>
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search by store name, proprietor or area..."
+              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:outline-none"
+            />
+          </div>
+
+          <select
+            value={selectedChannel}
+            onChange={e => setSelectedChannel(e.target.value)}
+            className="w-full sm:w-auto px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 focus:border-blue-600 focus:outline-none cursor-pointer"
+          >
+            <option value="all">All Sales Channels</option>
+            {salesChannels.map(c => (
+              <option key={c.id} value={c.id}>
+                {c.name} ({c.code})
+              </option>
+            ))}
+          </select>
         </div>
-        <span className="text-xs text-slate-500">
+
+        <span className="text-xs text-slate-500 shrink-0">
           <strong>{filteredRetailers.length}</strong> Registered Retail Partners
         </span>
       </div>
@@ -79,10 +102,11 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
       {/* Retailers Table as specified in Section 24 */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs min-w-[800px]">
+          <table className="w-full text-left text-xs min-w-[850px]">
             <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
               <tr>
                 <th className="p-3">Business Name</th>
+                <th className="p-3">Sales Channel</th>
                 <th className="p-3">Owner / Contact</th>
                 <th className="p-3">Area / Route</th>
                 <th className="p-3 text-right">Outstanding (₹)</th>
@@ -102,6 +126,11 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
                   <td className="p-3 font-bold text-slate-900 text-sm">
                     {r.businessName}
                     <span className="block text-[10px] text-slate-400 font-mono-numbers">GSTIN: {r.gstin}</span>
+                  </td>
+                  <td className="p-3">
+                    <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 inline-block">
+                      {r.salesChannelName || 'Wholesale'}
+                    </span>
                   </td>
                   <td className="p-3">
                     <p className="font-semibold text-slate-800">{r.ownerName}</p>

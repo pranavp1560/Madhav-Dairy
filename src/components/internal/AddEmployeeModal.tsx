@@ -4,7 +4,7 @@ import { userService } from '../../services/userService';
 import { Modal } from '../common/Modal';
 import { InternalRole } from '../../types/dairy';
 import { Button } from '../ui/Button';
-import { User, Mail, Phone, Building, Shield, Lock, CheckCircle2 } from 'lucide-react';
+import { User, Mail, Phone, Building, Shield, Send } from 'lucide-react';
 
 interface AddEmployeeModalProps {
   isOpen: boolean;
@@ -24,8 +24,7 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
   const [mobile, setMobile] = useState('');
   const [department, setDepartment] = useState('Operations');
   const [role, setRole] = useState<InternalRole>('production_manager');
-  const [password, setPassword] = useState('');
-  const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [status, setStatus] = useState<'invited' | 'inactive'>('invited');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -36,13 +35,18 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
     const cleanEmail = email.trim().toLowerCase();
     const cleanMobile = mobile.trim().replace(/\D/g, '');
 
-    if (!fullName.trim() || !cleanEmail || !cleanMobile || !password) {
+    if (!fullName.trim() || !cleanEmail || !cleanMobile) {
       setErrorMsg('Please fill in all required fields.');
       return;
     }
 
-    if (password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.');
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      setErrorMsg('Please enter a valid work email address.');
+      return;
+    }
+
+    if (cleanMobile.length < 10) {
+      setErrorMsg('Please enter a valid 10-digit mobile number.');
       return;
     }
 
@@ -54,23 +58,25 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
         mobile: cleanMobile,
         department: department.trim(),
         role,
-        password,
         status,
       });
 
-      addToast(`Employee account created for ${fullName.trim()}!`, 'success');
+      addToast(
+        `Employee created successfully. Invitation sent to: ${cleanEmail}. The employee must open the invitation email and create their password before logging in.`,
+        'success'
+      );
+
       // Reset form
       setFullName('');
       setEmail('');
       setMobile('');
-      setPassword('');
       setDepartment('Operations');
       setRole('production_manager');
-      setStatus('active');
+      setStatus('invited');
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to create employee account');
+      setErrorMsg(err.message || 'Failed to create employee and send invitation.');
     } finally {
       setIsSubmitting(false);
     }
@@ -81,7 +87,7 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Add New Employee"
-      subtitle="Provision a verified staff account with database role assignment and ERP permissions"
+      subtitle="Invite a verified staff member with database role assignment and ERP permissions"
       maxWidth="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -90,6 +96,17 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
             {errorMsg}
           </div>
         )}
+
+        {/* Security / Onboarding Notice */}
+        <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-3">
+          <Mail className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          <div className="space-y-0.5">
+            <p className="font-semibold text-blue-900">Zero-Knowledge Secure Onboarding</p>
+            <p className="text-[11px] text-blue-700 leading-relaxed">
+              An invitation email will be sent to the employee. They will create their own password using the secure invitation link. Administrators never see or set employee passwords.
+            </p>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
@@ -190,38 +207,17 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Account Status
+              Initial Account Status
             </label>
             <select
               value={status}
-              onChange={e => setStatus(e.target.value as 'active' | 'inactive')}
+              onChange={e => setStatus(e.target.value as 'invited' | 'inactive')}
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none cursor-pointer"
             >
-              <option value="active">Active (Can Login immediately)</option>
+              <option value="invited">Invited (Send invitation email now)</option>
               <option value="inactive">Inactive / Onboarding Hold</option>
             </select>
           </div>
-        </div>
-
-        <div>
-          <label className="block font-semibold text-slate-700 mb-1">
-            Initial Password <span className="text-red-500">*</span>
-          </label>
-          <div className="relative">
-            <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="Initial secure password (min 6 characters)"
-              className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-            />
-          </div>
-          <p className="text-[11px] text-slate-500 mt-1">
-            The employee can change their password at any time via Profile Settings or Password Reset.
-          </p>
         </div>
 
         <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -233,9 +229,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
             variant="primary"
             size="md"
             isLoading={isSubmitting}
-            icon={<CheckCircle2 className="w-4 h-4" />}
+            icon={<Send className="w-4 h-4" />}
           >
-            Provision Employee
+            Create Employee & Send Invite
           </Button>
         </div>
       </form>

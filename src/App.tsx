@@ -7,7 +7,7 @@ import { InternalLogin } from './components/internal/InternalLogin';
 import { InternalLayout } from './components/internal/InternalLayout';
 import { ToastContainer } from './components/common/ToastContainer';
 import { ResetPasswordModal } from './components/common/ResetPasswordModal';
-import { Milk, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const {
@@ -22,8 +22,8 @@ const AppContent: React.FC = () => {
   if (isLoading && !currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-4 text-white font-sans">
-        <div className="w-14 h-14 rounded-2xl bg-blue-600 flex items-center justify-center text-white shadow-xl shadow-blue-500/20 mb-4 animate-pulse">
-          <Milk className="w-8 h-8 text-white" />
+        <div className="p-3 bg-white rounded-2xl shadow-xl shadow-black/20 mb-4 animate-pulse max-w-[200px]">
+          <img src="/logo.png" alt="Madhav Dairy" className="h-12 w-auto object-contain" />
         </div>
         <h1 className="text-xl font-bold tracking-tight">Madhav Dairy</h1>
         <p className="text-xs text-slate-400 mt-1">Verifying session & database security...</p>
@@ -52,12 +52,10 @@ const AppContent: React.FC = () => {
         )
       )}
 
-      {/* Global Password Recovery Modal when recovery link is activated */}
+      {/* Global Password Setup & Recovery Modal when invitation or recovery link is activated */}
       <ResetPasswordModal
         isOpen={isPasswordRecovery}
         onClose={() => setIsPasswordRecovery(false)}
-        title="Set New Account Password"
-        subtitle="You accessed your account via a secure password recovery link. Please choose a new password."
       />
 
       {/* Global Toast Notifications */}

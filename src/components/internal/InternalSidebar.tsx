@@ -19,11 +19,13 @@ import {
   UserCheck,
   ShieldCheck,
   PackagePlus,
+  Tags,
+  Network,
+  BadgePercent,
   Settings,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
-  Milk,
   LogOut,
   X
 } from 'lucide-react';
@@ -141,9 +143,12 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
     {
       title: t.internal.nav.administration,
       items: [
+        { id: 'products', label: t.internal.nav.products, icon: PackagePlus },
+        { id: 'categories', label: t.internal.nav.categories, icon: Tags },
+        { id: 'channels', label: t.internal.nav.channels, icon: Network },
+        { id: 'pricing', label: t.internal.nav.pricing, icon: BadgePercent },
         { id: 'users', label: t.internal.nav.users, icon: UserCheck },
         { id: 'roles', label: t.internal.nav.rolesPermissions, icon: ShieldCheck },
-        { id: 'products', label: t.internal.nav.products, icon: PackagePlus },
         { id: 'settings', label: t.internal.nav.settings, icon: Settings },
       ],
       roles: ['admin'],
@@ -155,8 +160,8 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
       {/* Brand Header */}
       <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-2.5 overflow-hidden">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center shrink-0 shadow-sm text-white">
-            <Milk className="w-4 h-4 text-white" />
+          <div className={`${isCollapsed ? 'w-9 h-9 p-1' : 'h-9 px-1.5'} rounded-lg border border-slate-200 bg-white flex items-center justify-center shrink-0`}>
+            <img src="/logo.png" alt="Madhav Dairy" className={`${isCollapsed ? 'w-full h-full' : 'h-7 w-auto'} object-contain`} />
           </div>
           {!isCollapsed && (
             <div className="truncate">

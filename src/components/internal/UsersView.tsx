@@ -30,7 +30,7 @@ export const UsersView: React.FC = () => {
 
   // Edit form states
   const [editRole, setEditRole] = useState<InternalRole>('admin');
-  const [editStatus, setEditStatus] = useState<'active' | 'inactive'>('active');
+  const [editStatus, setEditStatus] = useState<'active' | 'inactive' | 'invited'>('active');
   const [isSaving, setIsSaving] = useState(false);
 
   // Password reset inline state
@@ -71,7 +71,12 @@ export const UsersView: React.FC = () => {
     if (!selectedUser) return;
     try {
       await userService.sendEmployeePasswordResetEmail(selectedUser.email);
-      addToast(`Password recovery link dispatched to ${selectedUser.email}`, 'success');
+      addToast(
+        selectedUser.status === 'invited'
+          ? `Invitation & password setup link re-sent to ${selectedUser.email}`
+          : `Password recovery link dispatched to ${selectedUser.email}`,
+        'success'
+      );
     } catch (err: any) {
       addToast(err.message || 'Failed to send recovery email', 'error');
     }
@@ -214,7 +219,8 @@ export const UsersView: React.FC = () => {
                     <td className="py-3 px-3">
                       <StatusBadge
                         status={u.status}
-                        label={u.status === 'active' ? 'Active' : 'Suspended'}
+                        tone={u.status === 'invited' ? 'blue' : u.status === 'active' ? 'green' : 'amber'}
+                        label={u.status === 'invited' ? 'Invited' : u.status === 'active' ? 'Active' : 'Suspended'}
                       />
                     </td>
                     <td className="py-3 px-4 text-right">
@@ -278,10 +284,11 @@ export const UsersView: React.FC = () => {
                 <label className="block font-semibold text-slate-700 mb-1">Account Status</label>
                 <select
                   value={editStatus}
-                  onChange={e => setEditStatus(e.target.value as 'active' | 'inactive')}
+                  onChange={e => setEditStatus(e.target.value as 'active' | 'inactive' | 'invited')}
                   className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs focus:outline-none focus:border-blue-600"
                 >
                   <option value="active">Active (Can Login to ERP)</option>
+                  <option value="invited">Invited (Pending Initial Password Setup)</option>
                   <option value="inactive">Inactive / Suspended (Account Locked)</option>
                 </select>
                 <p className="text-[10px] text-slate-500 mt-1">
@@ -316,7 +323,7 @@ export const UsersView: React.FC = () => {
                   icon={<KeyRound className="w-3.5 h-3.5" />}
                   onClick={handleSendResetEmail}
                 >
-                  Send Password Reset Email
+                  {selectedUser.status === 'invited' ? 'Resend Invitation / Password Link' : 'Send Password Reset Email'}
                 </Button>
 
                 <Button

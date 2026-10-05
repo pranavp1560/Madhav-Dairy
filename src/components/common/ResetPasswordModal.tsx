@@ -15,14 +15,22 @@ interface ResetPasswordModalProps {
 export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
   isOpen,
   onClose,
-  title = 'Set New Password',
-  subtitle = 'Please choose a secure password with at least 6 characters.',
+  title,
+  subtitle,
 }) => {
-  const { addToast } = useDairy();
+  const { addToast, refreshData, currentUser } = useDairy();
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  const isInvite = currentUser?.status === 'invited';
+  const effectiveTitle = title || (isInvite ? 'Set Up Your Work Password' : 'Set New Password');
+  const effectiveSubtitle = subtitle || (
+    isInvite
+      ? 'Welcome to Madhav Dairy ERP! Please choose a secure password to complete onboarding.'
+      : 'Please choose a secure password with at least 6 characters.'
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,10 +49,16 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
     setIsSubmitting(true);
     try {
       await authService.updatePassword(newPassword);
-      addToast('Password updated successfully! You can now continue.', 'success');
+      addToast(
+        isInvite
+          ? 'Password set successfully! Your account is now active.'
+          : 'Password updated successfully! You can now continue.',
+        'success'
+      );
       setNewPassword('');
       setConfirmPassword('');
       onClose();
+      await refreshData();
     } catch (err: any) {
       setValidationError(err.message || 'Failed to update password. Please try again.');
     } finally {
@@ -56,8 +70,8 @@ export const ResetPasswordModal: React.FC<ResetPasswordModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={title}
-      subtitle={subtitle}
+      title={effectiveTitle}
+      subtitle={effectiveSubtitle}
       maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
