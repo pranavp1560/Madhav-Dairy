@@ -68,7 +68,7 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const subtotal = cart.reduce((acc, item) => acc + item.quantity * item.product.defaultPrice, 0);
+  const subtotal = cart.reduce((acc, item) => acc + item.quantity * (item.unitPrice ?? item.product.defaultPrice), 0);
   const deliveryCharge = 0; // Free delivery for registered retailers
   const grandTotal = subtotal + deliveryCharge;
 
@@ -223,24 +223,27 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
       {/* Cart Items List */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs divide-y divide-slate-100 overflow-hidden">
         {cart.map(item => {
-          const itemTotal = item.quantity * item.product.defaultPrice;
+          const itemPrice = item.unitPrice ?? item.product.defaultPrice;
+          const itemTotal = item.quantity * itemPrice;
+          const skuLabel = item.sku?.variantName || item.sku?.packSize;
+          const key = `${item.product.id}_${item.sku?.id || 'default'}`;
 
           return (
             <div
-              key={item.product.id}
+              key={key}
               className="p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="flex-1 min-w-0">
                 <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                  {item.product.name}
+                  {item.product.name} {skuLabel ? <span className="text-blue-700 font-semibold text-sm">({skuLabel})</span> : ''}
                 </h2>
                 <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
                   <span className="font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded-md">
-                    {item.product.unit}
+                    {item.sku?.packSize || item.product.unit}
                   </span>
                   <span>•</span>
                   <span className="font-mono-numbers font-semibold">
-                    ₹{item.product.defaultPrice} / pack
+                    ₹{itemPrice} / pack
                   </span>
                 </div>
               </div>
@@ -250,7 +253,7 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
                 {/* Touch-Friendly Stepper (Min 44px Buttons) */}
                 <div className="flex items-center bg-blue-50/80 border border-blue-200 rounded-xl overflow-hidden shadow-2xs">
                   <button
-                    onClick={() => updateCartQty(item.product.id, item.quantity - 1)}
+                    onClick={() => updateCartQty(item.product.id, item.quantity - 1, item.sku?.id)}
                     className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center text-slate-800 hover:bg-blue-100 active:bg-blue-200 transition-colors"
                     aria-label="Decrease quantity"
                   >
@@ -260,7 +263,7 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
                     {item.quantity}
                   </span>
                   <button
-                    onClick={() => updateCartQty(item.product.id, item.quantity + 1)}
+                    onClick={() => updateCartQty(item.product.id, item.quantity + 1, item.sku?.id)}
                     className="min-w-[44px] min-h-[44px] w-11 h-11 flex items-center justify-center text-slate-800 hover:bg-blue-100 active:bg-blue-200 transition-colors"
                     aria-label="Increase quantity"
                   >
@@ -273,7 +276,7 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
                     ₹{itemTotal.toLocaleString()}
                   </span>
                   <button
-                    onClick={() => removeFromCart(item.product.id)}
+                    onClick={() => removeFromCart(item.product.id, item.sku?.id)}
                     className="min-h-[44px] text-xs font-bold text-red-600 hover:text-red-700 transition-colors inline-flex items-center"
                   >
                     Remove

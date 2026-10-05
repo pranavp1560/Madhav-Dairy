@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase';
-import { Product, ProductCategory, ProductSku, CategoryItem, ProductChannelPrice } from '../types/dairy';
+import { Product, ProductCategory, ProductSku, CategoryItem, ProductChannelPrice, SkuChannelPrice } from '../types/dairy';
 
 const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -14,14 +14,37 @@ export const productService = {
         name_mr,
         name_hi,
         description,
+        brand,
         base_unit,
         default_price,
         shelf_life_days,
         min_stock_threshold,
         image_url,
         is_available,
+        is_active,
         product_categories(id, name),
-        product_skus(id, sku_code, pack_size, unit, mrp, selling_price, is_default),
+        product_skus(
+          id,
+          product_id,
+          sku_code,
+          variant_name,
+          pack_size,
+          quantity,
+          unit,
+          mrp,
+          selling_price,
+          barcode,
+          is_default,
+          is_active,
+          sku_channel_prices(
+            id,
+            channel_id,
+            standard_price,
+            minimum_price,
+            is_active,
+            sales_channels(id, name, code)
+          )
+        ),
         product_channel_prices(
           id,
           channel_id,
@@ -44,28 +67,79 @@ export const productService = {
     const activeChannelCount = totalActiveChannels || 3;
 
     return (prods || []).map((p: any): Product => {
-      const skus: ProductSku[] = (p.product_skus || []).map((s: any) => ({
-        id: s.id,
-        skuCode: s.sku_code,
-        packSize: s.pack_size,
-        mrp: Number(s.mrp),
-        sellingPrice: Number(s.selling_price),
-        isDefault: s.is_default,
-      }));
+      const skus: ProductSku[] = (p.product_skus || []).map((s: any) => {
+        const skuPrices: SkuChannelPrice[] = (s.sku_channel_prices || []).map((scp: any) => ({
+          id: scp.id,
+          skuId: s.id,
+          skuCode: s.sku_code,
+          variantName: s.variant_name || s.pack_size,
+          productId: p.id,
+          productName: p.name,
+          channelId: scp.channel_id,
+          channelName: scp.sales_channels?.name || 'Channel',
+          channelCode: scp.sales_channels?.code || '',
+          standardPrice: Number(scp.standard_price),
+          minimumPrice: Number(scp.minimum_price),
+          isActive: scp.is_active,
+        }));
+
+        const activeSkuPrices = skuPrices.filter(sp => sp.isActive).length;
+        let skuPricingStatus: 'configured' | 'partial' | 'not_configured' = 'not_configured';
+        if (activeSkuPrices >= activeChannelCount && activeChannelCount > 0) {
+          skuPricingStatus = 'configured';
+        } else if (activeSkuPrices > 0) {
+          skuPricingStatus = 'partial';
+        }
+
+        return {
+          id: s.id,
+          productId: p.id,
+          productName: p.name,
+          skuCode: s.sku_code,
+          variantName: s.variant_name || s.pack_size,
+          packSize: s.pack_size,
+          quantity: s.quantity ? Number(s.quantity) : undefined,
+          unit: s.unit,
+          mrp: Number(s.mrp),
+          sellingPrice: Number(s.selling_price),
+          barcode: s.barcode || undefined,
+          isDefault: s.is_default,
+          isActive: s.is_active !== undefined ? s.is_active : true,
+          channelPrices: skuPrices,
+          channelCount: activeSkuPrices,
+          pricingStatus: skuPricingStatus,
+        };
+      });
 
       const defaultSku = skus.find(s => s.isDefault) || skus[0];
 
-      const channelPrices: ProductChannelPrice[] = (p.product_channel_prices || []).map((cp: any) => ({
-        id: cp.id,
-        productId: p.id,
-        productName: p.name,
-        channelId: cp.channel_id,
-        channelName: cp.sales_channels?.name || 'Channel',
-        channelCode: cp.sales_channels?.code || '',
-        standardPrice: Number(cp.standard_price),
-        minimumPrice: Number(cp.minimum_price),
-        isActive: cp.is_active,
-      }));
+      // Backward compatible channelPrices for product level derived from default SKU or product_channel_prices
+      let channelPrices: ProductChannelPrice[] = [];
+      if (defaultSku?.channelPrices && defaultSku.channelPrices.length > 0) {
+        channelPrices = defaultSku.channelPrices.map(sp => ({
+          id: sp.id,
+          productId: p.id,
+          productName: p.name,
+          channelId: sp.channelId,
+          channelName: sp.channelName,
+          channelCode: sp.channelCode,
+          standardPrice: sp.standardPrice,
+          minimumPrice: sp.minimumPrice,
+          isActive: sp.isActive,
+        }));
+      } else {
+        channelPrices = (p.product_channel_prices || []).map((cp: any) => ({
+          id: cp.id,
+          productId: p.id,
+          productName: p.name,
+          channelId: cp.channel_id,
+          channelName: cp.sales_channels?.name || 'Channel',
+          channelCode: cp.sales_channels?.code || '',
+          standardPrice: Number(cp.standard_price),
+          minimumPrice: Number(cp.minimum_price),
+          isActive: cp.is_active,
+        }));
+      }
 
       const activePricesCount = channelPrices.filter(cp => cp.isActive).length;
       let pricingStatus: 'configured' | 'partial' | 'not_configured' = 'not_configured';
@@ -82,15 +156,18 @@ export const productService = {
         nameMr: p.name_mr,
         nameHi: p.name_hi,
         category: (p.product_categories?.name || 'Fresh Milk & Curd') as ProductCategory,
-        unit: defaultSku?.packSize ? `${defaultSku.packSize} ${p.base_unit || 'pack'}` : (p.base_unit || 'unit'),
+        brand: p.brand || 'Madhav Dairy',
+        unit: defaultSku?.packSize ? `${defaultSku.packSize} ${defaultSku.unit || p.base_unit || 'pack'}` : (p.base_unit || 'unit'),
         mrp: defaultSku?.mrp || Number(p.default_price),
         defaultPrice: defaultSku?.sellingPrice || Number(p.default_price),
         shelfLifeDays: p.shelf_life_days,
         description: p.description || '',
         isAvailable: p.is_available,
+        isActive: p.is_active !== undefined ? p.is_active : true,
         minStockThreshold: p.min_stock_threshold,
         imageUrl: p.image_url,
         skus,
+        skuCount: skus.length,
         channelPrices,
         channelCount: activePricesCount,
         pricingStatus,
@@ -579,5 +656,504 @@ export const productService = {
         },
       ],
     };
-  }
+  },
+
+  // -------------------------------------------------------------
+  // PARENT PRODUCT MANAGEMENT
+  // -------------------------------------------------------------
+  async createParentProduct(data: {
+    name: string;
+    categoryId: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }): Promise<Product> {
+    const cleanName = data.name.trim();
+    if (!cleanName) throw new Error('Product name is required');
+
+    const { data: newProd, error: pErr } = await supabase
+      .from('products')
+      .insert({
+        organization_id: DEFAULT_ORG_ID,
+        category_id: data.categoryId,
+        name: cleanName,
+        description: data.description?.trim() || '',
+        brand: data.brand?.trim() || 'Madhav Dairy',
+        base_unit: data.baseUnit || 'pack',
+        default_price: 0,
+        shelf_life_days: 7,
+        min_stock_threshold: 10,
+        is_available: true,
+        is_active: data.isActive !== undefined ? data.isActive : true,
+      })
+      .select(`*, product_categories(id, name)`)
+      .single();
+
+    if (pErr) throw pErr;
+
+    return {
+      id: newProd.id,
+      categoryId: newProd.category_id,
+      name: newProd.name,
+      category: (newProd.product_categories?.name || 'Dairy') as ProductCategory,
+      brand: newProd.brand,
+      unit: newProd.base_unit || 'pack',
+      defaultPrice: 0,
+      shelfLifeDays: newProd.shelf_life_days,
+      description: newProd.description || '',
+      isAvailable: true,
+      isActive: newProd.is_active,
+      minStockThreshold: newProd.min_stock_threshold,
+      skus: [],
+      skuCount: 0,
+      channelPrices: [],
+      channelCount: 0,
+      pricingStatus: 'not_configured',
+    };
+  },
+
+  async updateParentProduct(id: string, data: {
+    name?: string;
+    categoryId?: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }): Promise<void> {
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.name !== undefined) updatePayload.name = data.name.trim();
+    if (data.categoryId !== undefined) updatePayload.category_id = data.categoryId;
+    if (data.description !== undefined) updatePayload.description = data.description.trim();
+    if (data.brand !== undefined) updatePayload.brand = data.brand.trim();
+    if (data.isActive !== undefined) updatePayload.is_active = data.isActive;
+    if (data.baseUnit !== undefined) updatePayload.base_unit = data.baseUnit;
+
+    const { error } = await supabase
+      .from('products')
+      .update(updatePayload)
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async toggleParentProductActive(id: string, isActive: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('products')
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async deleteParentProduct(id: string): Promise<void> {
+    // Check if any SKUs of this product have transactional references
+    const { data: skus } = await supabase
+      .from('product_skus')
+      .select('id')
+      .eq('product_id', id);
+
+    const skuIds = (skus || []).map(s => s.id);
+    if (skuIds.length > 0) {
+      const { count: orderItemsCount } = await supabase
+        .from('order_items')
+        .select('*', { count: 'exact', head: true })
+        .in('product_sku_id', skuIds);
+
+      if (orderItemsCount && orderItemsCount > 0) {
+        throw new Error(`This product has ${orderItemsCount} historical order items across its SKUs. Deactivate the product instead of deleting it.`);
+      }
+    }
+
+    // Delete child SKUs first (which cascade sku_channel_prices)
+    if (skuIds.length > 0) {
+      await supabase.from('product_skus').delete().in('id', skuIds);
+    }
+
+    const { error } = await supabase.from('products').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // -------------------------------------------------------------
+  // CHILD SKU MANAGEMENT
+  // -------------------------------------------------------------
+  async createSku(data: {
+    productId: string;
+    skuCode: string;
+    variantName: string;
+    packSize?: string;
+    quantity?: number;
+    unit: string;
+    mrp: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+    channelPrices?: {
+      channelId: string;
+      standardPrice: number;
+      minimumPrice: number;
+    }[];
+  }): Promise<ProductSku> {
+    const cleanSkuCode = data.skuCode.trim().toUpperCase();
+    if (!cleanSkuCode) throw new Error('SKU Code is required');
+    if (!data.variantName.trim()) throw new Error('Variant name is required');
+    if (isNaN(data.mrp) || data.mrp <= 0) throw new Error('Valid MRP is required');
+
+    // Check unique skuCode
+    const { data: existingSku } = await supabase
+      .from('product_skus')
+      .select('id, sku_code')
+      .eq('sku_code', cleanSkuCode)
+      .maybeSingle();
+
+    if (existingSku) {
+      throw new Error(`SKU Code "${cleanSkuCode}" already exists. Please choose a unique SKU code.`);
+    }
+
+    const packSize = data.packSize || data.variantName;
+    const defaultSellingPrice = data.sellingPrice || data.mrp;
+
+    const { data: newSku, error: sErr } = await supabase
+      .from('product_skus')
+      .insert({
+        product_id: data.productId,
+        sku_code: cleanSkuCode,
+        variant_name: data.variantName.trim(),
+        pack_size: packSize,
+        quantity: data.quantity || 1,
+        unit: data.unit,
+        mrp: data.mrp,
+        selling_price: defaultSellingPrice,
+        barcode: data.barcode?.trim() || null,
+        is_default: Boolean(data.isDefault),
+        is_active: data.isActive !== undefined ? data.isActive : true,
+      })
+      .select('*, products(id, name)')
+      .single();
+
+    if (sErr) throw sErr;
+
+    // Fetch active sales channels
+    const { data: channels } = await supabase
+      .from('sales_channels')
+      .select('id, code, name')
+      .eq('is_active', true);
+
+    const createdChannelPrices: SkuChannelPrice[] = [];
+
+    if (channels && channels.length > 0) {
+      const channelPricingRows = channels.map(ch => {
+        const custom = data.channelPrices?.find(cp => cp.channelId === ch.id);
+        let stdPrice = defaultSellingPrice;
+        let minPrice = Math.round(defaultSellingPrice * 0.95);
+
+        if (custom) {
+          stdPrice = custom.standardPrice;
+          minPrice = custom.minimumPrice;
+        } else if (ch.code === 'WHOLESALE') {
+          stdPrice = Math.round(defaultSellingPrice * 0.90);
+          minPrice = Math.round(defaultSellingPrice * 0.85);
+        } else if (ch.code === 'RETAIL') {
+          stdPrice = defaultSellingPrice;
+          minPrice = Math.round(defaultSellingPrice * 0.93);
+        }
+
+        if (minPrice > stdPrice) {
+          throw new Error(`Minimum Price (₹${minPrice}) cannot be greater than Standard Price (₹${stdPrice}) for ${ch.name}`);
+        }
+
+        return {
+          organization_id: DEFAULT_ORG_ID,
+          sku_id: newSku.id,
+          channel_id: ch.id,
+          standard_price: stdPrice,
+          minimum_price: minPrice,
+          is_active: true,
+        };
+      });
+
+      const { data: insertedPrices, error: ipErr } = await supabase
+        .from('sku_channel_prices')
+        .insert(channelPricingRows)
+        .select(`
+          id,
+          sku_id,
+          channel_id,
+          standard_price,
+          minimum_price,
+          is_active,
+          sales_channels(id, name, code)
+        `);
+
+      if (!ipErr && insertedPrices) {
+        insertedPrices.forEach((ip: any) => {
+          createdChannelPrices.push({
+            id: ip.id,
+            skuId: newSku.id,
+            skuCode: newSku.sku_code,
+            variantName: newSku.variant_name,
+            productId: data.productId,
+            productName: (newSku as any).products?.name,
+            channelId: ip.channel_id,
+            channelName: ip.sales_channels?.name,
+            channelCode: ip.sales_channels?.code,
+            standardPrice: Number(ip.standard_price),
+            minimumPrice: Number(ip.minimum_price),
+            isActive: ip.is_active,
+          });
+        });
+      }
+    }
+
+    return {
+      id: newSku.id,
+      productId: data.productId,
+      productName: (newSku as any).products?.name,
+      skuCode: newSku.sku_code,
+      variantName: newSku.variant_name,
+      packSize: newSku.pack_size,
+      quantity: newSku.quantity ? Number(newSku.quantity) : undefined,
+      unit: newSku.unit,
+      mrp: Number(newSku.mrp),
+      sellingPrice: Number(newSku.selling_price),
+      barcode: newSku.barcode || undefined,
+      isDefault: newSku.is_default,
+      isActive: newSku.is_active,
+      channelPrices: createdChannelPrices,
+      channelCount: createdChannelPrices.length,
+      pricingStatus: createdChannelPrices.length > 0 ? 'configured' : 'not_configured',
+    };
+  },
+
+  async updateSku(id: string, data: {
+    skuCode?: string;
+    variantName?: string;
+    packSize?: string;
+    quantity?: number;
+    unit?: string;
+    mrp?: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }): Promise<void> {
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (data.skuCode !== undefined) updatePayload.sku_code = data.skuCode.trim().toUpperCase();
+    if (data.variantName !== undefined) updatePayload.variant_name = data.variantName.trim();
+    if (data.packSize !== undefined) updatePayload.pack_size = data.packSize.trim();
+    if (data.quantity !== undefined) updatePayload.quantity = data.quantity;
+    if (data.unit !== undefined) updatePayload.unit = data.unit;
+    if (data.mrp !== undefined) updatePayload.mrp = data.mrp;
+    if (data.sellingPrice !== undefined) updatePayload.selling_price = data.sellingPrice;
+    if (data.barcode !== undefined) updatePayload.barcode = data.barcode.trim() || null;
+    if (data.isDefault !== undefined) updatePayload.is_default = data.isDefault;
+    if (data.isActive !== undefined) updatePayload.is_active = data.isActive;
+
+    const { error } = await supabase
+      .from('product_skus')
+      .update(updatePayload)
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async toggleSkuActive(id: string, isActive: boolean): Promise<void> {
+    const { error } = await supabase
+      .from('product_skus')
+      .update({ is_active: isActive, updated_at: new Date().toISOString() })
+      .eq('id', id);
+
+    if (error) throw error;
+  },
+
+  async deleteSku(id: string): Promise<void> {
+    // Check if referenced in historical orders or inventory
+    const { count: ordersCount } = await supabase
+      .from('order_items')
+      .select('*', { count: 'exact', head: true })
+      .eq('product_sku_id', id);
+
+    if (ordersCount && ordersCount > 0) {
+      throw new Error(`This SKU is referenced by ${ordersCount} historical order line(s). Deactivate it instead of deleting it to preserve financial history.`);
+    }
+
+    const { count: batchesCount } = await supabase
+      .from('batches')
+      .select('*', { count: 'exact', head: true })
+      .eq('product_sku_id', id);
+
+    if (batchesCount && batchesCount > 0) {
+      throw new Error(`This SKU is referenced by ${batchesCount} production batch(es). Deactivate it instead of deleting it.`);
+    }
+
+    const { error } = await supabase.from('product_skus').delete().eq('id', id);
+    if (error) throw error;
+  },
+
+  // -------------------------------------------------------------
+  // SKU CHANNEL PRICING MANAGEMENT
+  // -------------------------------------------------------------
+  async fetchSkuChannelPrices(skuId?: string): Promise<SkuChannelPrice[]> {
+    let query = supabase
+      .from('sku_channel_prices')
+      .select(`
+        id,
+        sku_id,
+        channel_id,
+        standard_price,
+        minimum_price,
+        is_active,
+        created_at,
+        updated_at,
+        product_skus(
+          id,
+          sku_code,
+          variant_name,
+          products(id, name)
+        ),
+        sales_channels(id, name, code)
+      `);
+
+    if (skuId) {
+      query = query.eq('sku_id', skuId);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    return (data || []).map((row: any): SkuChannelPrice => ({
+      id: row.id,
+      skuId: row.sku_id,
+      skuCode: row.product_skus?.sku_code,
+      variantName: row.product_skus?.variant_name,
+      productId: row.product_skus?.products?.id,
+      productName: row.product_skus?.products?.name,
+      channelId: row.channel_id,
+      channelName: row.sales_channels?.name,
+      channelCode: row.sales_channels?.code,
+      standardPrice: Number(row.standard_price),
+      minimumPrice: Number(row.minimum_price),
+      isActive: row.is_active,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  },
+
+  async saveSkuChannelPrice(data: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }): Promise<SkuChannelPrice> {
+    const std = Number(data.standardPrice);
+    const min = Number(data.minimumPrice);
+
+    if (isNaN(std) || std < 0) {
+      throw new Error('Standard Price must be a valid positive number');
+    }
+    if (isNaN(min) || min < 0) {
+      throw new Error('Minimum Price must be a valid positive number');
+    }
+    if (min > std) {
+      throw new Error(`Minimum Price (₹${min}) cannot be higher than Standard Price (₹${std})`);
+    }
+
+    const { data: saved, error } = await supabase
+      .from('sku_channel_prices')
+      .upsert({
+        organization_id: DEFAULT_ORG_ID,
+        sku_id: data.skuId,
+        channel_id: data.channelId,
+        standard_price: std,
+        minimum_price: min,
+        is_active: data.isActive !== undefined ? data.isActive : true,
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'organization_id,sku_id,channel_id'
+      })
+      .select(`
+        id,
+        sku_id,
+        channel_id,
+        standard_price,
+        minimum_price,
+        is_active,
+        created_at,
+        updated_at,
+        product_skus(
+          id,
+          sku_code,
+          variant_name,
+          products(id, name)
+        ),
+        sales_channels(id, name, code)
+      `)
+      .single();
+
+    if (error) throw error;
+
+    return {
+      id: saved.id,
+      skuId: saved.sku_id,
+      skuCode: (saved as any).product_skus?.sku_code,
+      variantName: (saved as any).product_skus?.variant_name,
+      productId: (saved as any).product_skus?.products?.id,
+      productName: (saved as any).product_skus?.products?.name,
+      channelId: saved.channel_id,
+      channelName: (saved as any).sales_channels?.name,
+      channelCode: (saved as any).sales_channels?.code,
+      standardPrice: Number(saved.standard_price),
+      minimumPrice: Number(saved.minimum_price),
+      isActive: saved.is_active,
+      createdAt: saved.created_at,
+      updatedAt: saved.updated_at,
+    };
+  },
+
+  async saveMultipleSkuChannelPrices(prices: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }[]): Promise<void> {
+    for (const p of prices) {
+      const std = Number(p.standardPrice);
+      const min = Number(p.minimumPrice);
+
+      if (isNaN(std) || std < 0) {
+        throw new Error('Standard Price must be a valid positive number');
+      }
+      if (isNaN(min) || min < 0) {
+        throw new Error('Minimum Price must be a valid positive number');
+      }
+      if (min > std) {
+        throw new Error(`Minimum Price (₹${min}) cannot be higher than Standard Price (₹${std})`);
+      }
+    }
+
+    const rows = prices.map(p => ({
+      organization_id: DEFAULT_ORG_ID,
+      sku_id: p.skuId,
+      channel_id: p.channelId,
+      standard_price: Number(p.standardPrice),
+      minimum_price: Number(p.minimumPrice),
+      is_active: p.isActive !== undefined ? p.isActive : true,
+      updated_at: new Date().toISOString(),
+    }));
+
+    const { error } = await supabase
+      .from('sku_channel_prices')
+      .upsert(rows, {
+        onConflict: 'organization_id,sku_id,channel_id'
+      });
+
+    if (error) throw error;
+  },
 };

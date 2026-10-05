@@ -33,6 +33,9 @@ export const orderService = {
           unit_price,
           line_total,
           product_skus(
+            id,
+            sku_code,
+            variant_name,
             pack_size,
             unit,
             products(id, name)
@@ -46,10 +49,17 @@ export const orderService = {
     return (ordersData || []).map((o: any): Order => {
       const items: OrderItem[] = (o.order_items || []).map((it: any) => {
         const prod = it.product_skus?.products;
+        const sku = it.product_skus;
+        const variantLabel = sku?.variant_name || sku?.pack_size || '';
+        const displayName = prod?.name ? (variantLabel ? `${prod.name} (${variantLabel})` : prod.name) : 'Dairy Product';
+
         return {
           productId: prod?.id || it.product_sku_id,
-          productName: prod?.name || 'Dairy Product',
-          unit: it.product_skus?.pack_size || it.product_skus?.unit || 'pack',
+          skuId: sku?.id || it.product_sku_id,
+          skuCode: sku?.sku_code,
+          variantName: sku?.variant_name || sku?.pack_size,
+          productName: displayName,
+          unit: sku?.pack_size || sku?.unit || 'pack',
           quantity: Number(it.quantity),
           unitPrice: Number(it.unit_price),
           totalPrice: Number(it.line_total),
@@ -86,16 +96,35 @@ export const orderService = {
 
     const channelName = (customer as any)?.sales_channels?.name || 'Channel';
 
-    const { data: prices } = await supabase
+    // 1. Fetch SKU channel prices
+    const { data: skuPrices } = await supabase
+      .from('sku_channel_prices')
+      .select('sku_id, standard_price, minimum_price')
+      .eq('channel_id', customer.sales_channel_id)
+      .eq('is_active', true);
+
+    // 2. Fetch legacy product channel prices for fallback
+    const { data: prodPrices } = await supabase
       .from('product_channel_prices')
       .select('product_id, standard_price, minimum_price')
       .eq('channel_id', customer.sales_channel_id)
       .eq('is_active', true);
 
     const result: Record<string, { standardPrice: number; minimumPrice: number; channelName: string }> = {};
-    if (prices) {
-      prices.forEach((p: any) => {
+
+    if (prodPrices) {
+      prodPrices.forEach((p: any) => {
         result[p.product_id] = {
+          standardPrice: Number(p.standard_price),
+          minimumPrice: Number(p.minimum_price),
+          channelName,
+        };
+      });
+    }
+
+    if (skuPrices) {
+      skuPrices.forEach((p: any) => {
+        result[p.sku_id] = {
           standardPrice: Number(p.standard_price),
           minimumPrice: Number(p.minimum_price),
           channelName,
@@ -109,7 +138,8 @@ export const orderService = {
   async createOrder(params: {
     customerId: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName: string;
       quantity: number;
       unitPrice: number;
@@ -127,18 +157,38 @@ export const orderService = {
     const channelId = customerData?.sales_channel_id;
     const channelName = (customerData as any)?.sales_channels?.name || 'Channel';
 
+    const itemSkuIds = params.items.map(i => i.skuId).filter(Boolean) as string[];
+    const itemProdIds = params.items.map(i => i.productId).filter(Boolean) as string[];
+
     if (channelId) {
-      const { data: channelPrices } = await supabase
+      // Lookup SKU channel prices
+      const { data: skuChannelPrices } = await supabase
+        .from('sku_channel_prices')
+        .select('sku_id, standard_price, minimum_price, is_active')
+        .eq('channel_id', channelId)
+        .eq('is_active', true)
+        .in('sku_id', itemSkuIds.length > 0 ? itemSkuIds : ['00000000-0000-0000-0000-000000000000']);
+
+      // Lookup product channel prices fallback
+      const { data: prodChannelPrices } = await supabase
         .from('product_channel_prices')
         .select('product_id, standard_price, minimum_price, is_active')
         .eq('channel_id', channelId)
         .eq('is_active', true)
-        .in('product_id', params.items.map(i => i.productId));
+        .in('product_id', itemProdIds.length > 0 ? itemProdIds : ['00000000-0000-0000-0000-000000000000']);
 
       const priceMap: Record<string, { standard: number; minimum: number }> = {};
-      if (channelPrices) {
-        channelPrices.forEach((cp: any) => {
+      if (prodChannelPrices) {
+        prodChannelPrices.forEach((cp: any) => {
           priceMap[cp.product_id] = {
+            standard: Number(cp.standard_price),
+            minimum: Number(cp.minimum_price),
+          };
+        });
+      }
+      if (skuChannelPrices) {
+        skuChannelPrices.forEach((cp: any) => {
+          priceMap[cp.sku_id] = {
             standard: Number(cp.standard_price),
             minimum: Number(cp.minimum_price),
           };
@@ -147,7 +197,7 @@ export const orderService = {
 
       // Validate each item against the channel minimum price rule
       for (const item of params.items) {
-        const rule = priceMap[item.productId];
+        const rule = (item.skuId ? priceMap[item.skuId] : undefined) || (item.productId ? priceMap[item.productId] : undefined);
         if (rule && item.unitPrice < rule.minimum) {
           throw new Error(
             `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName}".`
@@ -196,26 +246,37 @@ export const orderService = {
 
     if (oErr) throw oErr;
 
-    // 3. Fetch default sku for each product to link order items
-    const { data: allSkus } = await supabase
-      .from('product_skus')
-      .select('id, product_id, pack_size, unit, selling_price')
-      .in('product_id', params.items.map(i => i.productId));
-
+    // 3. Resolve SKU ID for each item
+    // If item.skuId already provided, use directly; otherwise lookup default SKU for product_id
+    const needsSkuLookup = params.items.filter(i => !i.skuId && i.productId).map(i => i.productId as string);
     const skuMap: Record<string, any> = {};
-    if (allSkus) {
-      allSkus.forEach((s: any) => {
-        if (!skuMap[s.product_id]) skuMap[s.product_id] = s;
-      });
+
+    if (needsSkuLookup.length > 0) {
+      const { data: lookedUpSkus } = await supabase
+        .from('product_skus')
+        .select('id, product_id, pack_size, unit, selling_price')
+        .in('product_id', needsSkuLookup);
+
+      if (lookedUpSkus) {
+        lookedUpSkus.forEach((s: any) => {
+          if (!skuMap[s.product_id]) skuMap[s.product_id] = s;
+        });
+      }
     }
 
     // 4. Insert order line items (snapshots the unit_price permanently)
     const orderItemsRows = params.items.map(i => {
-      const sku = skuMap[i.productId];
-      const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
+      let finalSkuId = i.skuId;
+      if (!finalSkuId && i.productId) {
+        finalSkuId = skuMap[i.productId]?.id;
+      }
+      if (!finalSkuId) {
+        finalSkuId = '1c1d1971-da7e-4669-889a-5eb33e62a53e'; // Fallback
+      }
+
       return {
         order_id: newOrder.id,
-        product_sku_id: skuId,
+        product_sku_id: finalSkuId,
         quantity: i.quantity,
         unit_price: i.unitPrice,
         discount_amount: 0,
@@ -263,9 +324,10 @@ export const orderService = {
       paymentStatus: 'unpaid',
       notes: params.notes,
       items: params.items.map(i => ({
-        productId: i.productId,
+        productId: i.productId || i.skuId || '',
+        skuId: i.skuId,
         productName: i.productName,
-        unit: skuMap[i.productId]?.pack_size || 'pack',
+        unit: (i.productId ? skuMap[i.productId]?.pack_size : undefined) || 'pack',
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         totalPrice: i.quantity * i.unitPrice
@@ -276,7 +338,8 @@ export const orderService = {
   async updateOrder(orderId: string, params: {
     customerId?: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -310,18 +373,38 @@ export const orderService = {
     const channelId = customerData?.sales_channel_id;
     const channelName = (customerData as any)?.sales_channels?.name || 'Channel';
 
+    const itemSkuIds = params.items.map(i => i.skuId).filter(Boolean) as string[];
+    const itemProdIds = params.items.map(i => i.productId).filter(Boolean) as string[];
+
     if (channelId) {
-      const { data: channelPrices } = await supabase
+      // Lookup SKU channel prices
+      const { data: skuChannelPrices } = await supabase
+        .from('sku_channel_prices')
+        .select('sku_id, standard_price, minimum_price, is_active')
+        .eq('channel_id', channelId)
+        .eq('is_active', true)
+        .in('sku_id', itemSkuIds.length > 0 ? itemSkuIds : ['00000000-0000-0000-0000-000000000000']);
+
+      // Lookup product channel prices fallback
+      const { data: prodChannelPrices } = await supabase
         .from('product_channel_prices')
         .select('product_id, standard_price, minimum_price, is_active')
         .eq('channel_id', channelId)
         .eq('is_active', true)
-        .in('product_id', params.items.map(i => i.productId));
+        .in('product_id', itemProdIds.length > 0 ? itemProdIds : ['00000000-0000-0000-0000-000000000000']);
 
       const priceMap: Record<string, { standard: number; minimum: number }> = {};
-      if (channelPrices) {
-        channelPrices.forEach((cp: any) => {
+      if (prodChannelPrices) {
+        prodChannelPrices.forEach((cp: any) => {
           priceMap[cp.product_id] = {
+            standard: Number(cp.standard_price),
+            minimum: Number(cp.minimum_price),
+          };
+        });
+      }
+      if (skuChannelPrices) {
+        skuChannelPrices.forEach((cp: any) => {
+          priceMap[cp.sku_id] = {
             standard: Number(cp.standard_price),
             minimum: Number(cp.minimum_price),
           };
@@ -330,7 +413,7 @@ export const orderService = {
 
       // Enforce floor prices strictly
       for (const item of params.items) {
-        const rule = priceMap[item.productId];
+        const rule = (item.skuId ? priceMap[item.skuId] : undefined) || (item.productId ? priceMap[item.productId] : undefined);
         if (rule && item.unitPrice < rule.minimum) {
           throw new Error(
             `Selling price ₹${item.unitPrice} cannot be lower than the minimum allowed price of ₹${rule.minimum} for the ${channelName} channel on "${item.productName || 'selected product'}".`
@@ -339,17 +422,21 @@ export const orderService = {
       }
     }
 
-    // 3. Fetch SKUs for each product to link order items
-    const { data: allSkus } = await supabase
-      .from('product_skus')
-      .select('id, product_id, pack_size, unit, selling_price')
-      .in('product_id', params.items.map(i => i.productId));
-
+    // 3. Resolve SKUs for each product
+    const needsSkuLookup = params.items.filter(i => !i.skuId && i.productId).map(i => i.productId as string);
     const skuMap: Record<string, any> = {};
-    if (allSkus) {
-      allSkus.forEach((s: any) => {
-        if (!skuMap[s.product_id]) skuMap[s.product_id] = s;
-      });
+
+    if (needsSkuLookup.length > 0) {
+      const { data: allSkus } = await supabase
+        .from('product_skus')
+        .select('id, product_id, pack_size, unit, selling_price')
+        .in('product_id', needsSkuLookup);
+
+      if (allSkus) {
+        allSkus.forEach((s: any) => {
+          if (!skuMap[s.product_id]) skuMap[s.product_id] = s;
+        });
+      }
     }
 
     const totalAmount = params.items.reduce((sum, item) => sum + (item.quantity * item.unitPrice), 0);
@@ -380,11 +467,17 @@ export const orderService = {
     if (delErr) throw delErr;
 
     const orderItemsRows = params.items.map(i => {
-      const sku = skuMap[i.productId];
-      const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
+      let finalSkuId = i.skuId;
+      if (!finalSkuId && i.productId) {
+        finalSkuId = skuMap[i.productId]?.id;
+      }
+      if (!finalSkuId) {
+        finalSkuId = '1c1d1971-da7e-4669-889a-5eb33e62a53e'; // Fallback
+      }
+
       return {
         order_id: orderId,
-        product_sku_id: skuId,
+        product_sku_id: finalSkuId,
         quantity: i.quantity,
         unit_price: i.unitPrice,
         discount_amount: 0,
@@ -423,9 +516,10 @@ export const orderService = {
       paymentStatus: (currentOrder as any).payment_status || 'unpaid',
       notes: params.notes !== undefined ? params.notes : currentOrder.notes,
       items: params.items.map(i => ({
-        productId: i.productId,
+        productId: i.productId || i.skuId || '',
+        skuId: i.skuId,
         productName: i.productName || 'Dairy Product',
-        unit: skuMap[i.productId]?.pack_size || 'pack',
+        unit: (i.productId ? skuMap[i.productId]?.pack_size : undefined) || 'pack',
         quantity: i.quantity,
         unitPrice: i.unitPrice,
         totalPrice: i.quantity * i.unitPrice,

@@ -22,6 +22,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedSkuByProduct, setSelectedSkuByProduct] = useState<Record<string, string>>({});
 
   // Dynamic categories
   const categoriesList = [
@@ -32,24 +33,37 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
     ])).filter(Boolean)
   ];
 
-  // Resolve customer channel standard price (NEVER reveal minimum price or other channels)
-  const getProductPriceInfo = (prod: Product) => {
-    let price = prod.defaultPrice;
+  // Resolve customer channel standard price for a specific SKU or fallback to product
+  const getSkuPriceInfo = (prod: Product, sku?: any) => {
+    let price = sku ? (sku.sellingPrice || sku.mrp) : prod.defaultPrice;
     let label = 'Wholesale Rate';
 
     if (currentRetailer?.salesChannelId) {
-      const cp = (prod.channelPrices || channelPrices).find(
-        (c: any) => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
-      );
-      if (cp) {
-        price = cp.standardPrice;
-        label = `${cp.channelName || currentRetailer.salesChannelName || 'Channel'} Rate`;
-      } else if (currentRetailer.salesChannelName) {
-        label = `${currentRetailer.salesChannelName} Rate`;
+      if (sku?.channelPrices && sku.channelPrices.length > 0) {
+        const scp = sku.channelPrices.find(
+          (c: any) => c.channelId === currentRetailer.salesChannelId && c.isActive
+        );
+        if (scp) {
+          price = scp.standardPrice;
+          label = `${scp.channelName || currentRetailer.salesChannelName || 'Channel'} Rate`;
+        }
+      } else {
+        const cp = (prod.channelPrices || channelPrices).find(
+          (c: any) => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
+        );
+        if (cp) {
+          price = cp.standardPrice;
+          label = `${cp.channelName || currentRetailer.salesChannelName || 'Channel'} Rate`;
+        } else if (currentRetailer.salesChannelName) {
+          label = `${currentRetailer.salesChannelName} Rate`;
+        }
       }
     }
 
-    return { price, label };
+    const mrp = sku?.mrp || prod.mrp || Math.round(price * 1.15);
+    const savings = mrp > price ? mrp - price : 0;
+
+    return { price, mrp, savings, label };
   };
 
   const filteredProducts = products.filter(p => {
@@ -60,13 +74,13 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
     return matchesCat && matchesSearch;
   });
 
-  const getCartQuantity = (productId: string) => {
-    const item = cart.find(i => i.product.id === productId);
+  const getCartQuantity = (productId: string, skuId?: string) => {
+    const item = cart.find(i => i.product.id === productId && (skuId ? i.sku?.id === skuId : true));
     return item ? item.quantity : 0;
   };
 
-  const handleAddProduct = (productId: string) => {
-    addToCart(productId, 1);
+  const handleAddProduct = (productId: string, skuId?: string) => {
+    addToCart(productId, 1, skuId);
   };
 
   const getCategoryBadgeClass = (cat: string) => {
@@ -150,10 +164,12 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           {filteredProducts.map(prod => {
-            const qty = getCartQuantity(prod.id);
-            const { price: effectivePrice, label: rateLabel } = getProductPriceInfo(prod);
-            const mrp = prod.mrp || Math.round(effectivePrice * 1.15);
-            const savings = mrp > effectivePrice ? mrp - effectivePrice : 0;
+            const activeSkus = (prod.skus || []).filter(s => s.isActive !== false);
+            const chosenSkuId = selectedSkuByProduct[prod.id];
+            const currentSku = activeSkus.find(s => s.id === chosenSkuId) || activeSkus.find(s => s.isDefault) || activeSkus[0] || null;
+
+            const qty = getCartQuantity(prod.id, currentSku?.id);
+            const { price: effectivePrice, mrp, savings, label: rateLabel } = getSkuPriceInfo(prod, currentSku);
 
             return (
               <div
@@ -182,11 +198,44 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                     {prod.name}
                   </h2>
 
+                  {/* Brand */}
+                  <span className="text-xs text-slate-400 block font-normal">
+                    {prod.brand || 'Madhav Dairy'}
+                  </span>
+
+                  {/* Child SKU Variant Chips (if multiple variants exist) */}
+                  {activeSkus.length > 1 && (
+                    <div className="pt-2">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                        Select Pack Size:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {activeSkus.map(s => {
+                          const isSelected = s.id === currentSku?.id;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => setSelectedSkuByProduct(prev => ({ ...prev, [prod.id]: s.id }))}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all border ${
+                                isSelected
+                                  ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {s.variantName || s.packSize}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Pack Size */}
-                  <div className="flex items-center gap-2 mt-1.5 text-sm text-slate-600">
+                  <div className="flex items-center gap-2 mt-2 text-sm text-slate-600">
                     <span className="font-medium">{t.customer.products.pack}:</span>
                     <span className="font-bold text-slate-800 bg-slate-100 px-2.5 py-0.5 rounded-md">
-                      {prod.unit}
+                      {currentSku?.packSize || currentSku?.variantName || prod.unit}
                     </span>
                   </div>
 
@@ -230,7 +279,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                 <div className="pt-2">
                   {qty === 0 ? (
                     <button
-                      onClick={() => handleAddProduct(prod.id)}
+                      onClick={() => handleAddProduct(prod.id, currentSku?.id)}
                       disabled={!prod.isAvailable}
                       className="w-full h-12 min-h-[48px] px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:pointer-events-none text-white font-bold text-sm sm:text-base shadow-2xs flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                     >
@@ -242,7 +291,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                       {/* Big, Touch-Friendly Stepper Control (Min 44px Hit Targets) */}
                       <div className="flex items-center justify-between bg-blue-50/80 border border-blue-200 rounded-xl p-1.5 shadow-2xs">
                         <button
-                          onClick={() => updateCartQty(prod.id, qty - 1)}
+                          onClick={() => updateCartQty(prod.id, qty - 1, currentSku?.id)}
                           className="min-w-[44px] min-h-[44px] w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-white text-slate-800 hover:bg-blue-100 active:bg-blue-200 flex items-center justify-center transition-colors shadow-2xs border border-blue-200"
                           aria-label="Decrease quantity"
                         >
@@ -257,7 +306,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                         </div>
 
                         <button
-                          onClick={() => updateCartQty(prod.id, qty + 1)}
+                          onClick={() => updateCartQty(prod.id, qty + 1, currentSku?.id)}
                           className="min-w-[44px] min-h-[44px] w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 flex items-center justify-center transition-colors shadow-2xs"
                           aria-label="Increase quantity"
                         >

@@ -20,7 +20,9 @@ import {
   RolePermission,
   CategoryItem,
   SalesChannel,
-  ProductChannelPrice
+  ProductChannelPrice,
+  ProductSku,
+  SkuChannelPrice
 } from '../types/dairy';
 import {
   authService,
@@ -42,6 +44,8 @@ import {
 
 export interface CartItem {
   product: Product;
+  sku?: ProductSku;
+  unitPrice: number;
   quantity: number;
 }
 
@@ -101,14 +105,15 @@ interface DairyContextType {
   categories: CategoryItem[];
   salesChannels: SalesChannel[];
   channelPrices: ProductChannelPrice[];
+  skuChannelPrices: SkuChannelPrice[];
 
   // Cart
   cart: CartItem[];
   cartCount: number;
   cartTotal: number;
-  addToCart: (productId: string, qty?: number) => void;
-  updateCartQty: (productId: string, qty: number) => void;
-  removeFromCart: (productId: string) => void;
+  addToCart: (productId: string, qty?: number, skuId?: string) => void;
+  updateCartQty: (productId: string, qty: number, skuId?: string) => void;
+  removeFromCart: (productId: string, skuId?: string) => void;
   clearCart: () => void;
   placeOrder: (notes?: string, deliveryDate?: string) => Promise<Order>;
   reorder: (orderId: string) => void;
@@ -125,6 +130,76 @@ interface DairyContextType {
   saveChannelPrice: (data: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }) => Promise<ProductChannelPrice>;
   saveMultipleChannelPrices: (prices: { productId: string; channelId: string; standardPrice: number; minimumPrice: number; isActive?: boolean }[]) => Promise<void>;
   refreshPricingData: () => Promise<void>;
+
+  // Parent Product CRUD
+  createParentProduct: (data: {
+    name: string;
+    categoryId: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }) => Promise<Product>;
+  updateParentProduct: (id: string, data: {
+    name?: string;
+    categoryId?: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }) => Promise<void>;
+  toggleParentProductActive: (id: string, isActive: boolean) => Promise<void>;
+  deleteParentProduct: (id: string) => Promise<void>;
+
+  // Child SKU CRUD
+  createSku: (data: {
+    productId: string;
+    skuCode: string;
+    variantName: string;
+    packSize?: string;
+    quantity?: number;
+    unit: string;
+    mrp: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+    channelPrices?: {
+      channelId: string;
+      standardPrice: number;
+      minimumPrice: number;
+    }[];
+  }) => Promise<ProductSku>;
+  updateSku: (id: string, data: {
+    skuCode?: string;
+    variantName?: string;
+    packSize?: string;
+    quantity?: number;
+    unit?: string;
+    mrp?: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }) => Promise<void>;
+  toggleSkuActive: (id: string, isActive: boolean) => Promise<void>;
+  deleteSku: (id: string) => Promise<void>;
+
+  // SKU Channel Pricing
+  saveSkuChannelPrice: (data: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }) => Promise<SkuChannelPrice>;
+  saveMultipleSkuChannelPrices: (prices: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }[]) => Promise<void>;
 
   // Business Actions
   addProduct: (data: {
@@ -224,7 +299,8 @@ interface DairyContextType {
   createInternalOrder: (params: {
     customerId: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -235,7 +311,8 @@ interface DairyContextType {
   editOrder: (orderId: string, params: {
     customerId?: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -292,6 +369,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [categories, setCategories] = useState<CategoryItem[]>([]);
   const [salesChannels, setSalesChannels] = useState<SalesChannel[]>([]);
   const [channelPrices, setChannelPrices] = useState<ProductChannelPrice[]>([]);
+  const [skuChannelPrices, setSkuChannelPrices] = useState<SkuChannelPrice[]>([]);
 
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -353,6 +431,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setUsers([]);
         setSalesChannels([]);
         setChannelPrices([]);
+        setSkuChannelPrices([]);
         return;
       }
 
@@ -373,13 +452,14 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setCurrentRetailer(custs[0]);
         }
 
-        const [ords, invs, pays, notifs, expAlerts, prices] = await Promise.all([
+        const [ords, invs, pays, notifs, expAlerts, prices, skuPrs] = await Promise.all([
           orderService.fetchOrders(),
           invoiceService.fetchInvoices(),
           paymentService.fetchPayments(),
           notificationService.fetchNotifications(),
           expiryService.fetchExpiryAlerts(),
           productService.fetchChannelPrices(),
+          productService.fetchSkuChannelPrices(),
         ]);
 
         setOrders(ords);
@@ -388,6 +468,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setNotifications(notifs);
         setExpiryAlerts(expAlerts);
         setChannelPrices(prices);
+        setSkuChannelPrices(skuPrs);
 
       } else if (profile.userType === 'internal') {
         // Internal staff view: load full organization data permitted by RLS
@@ -408,7 +489,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           usrs,
           rPerms,
           channels,
-          prices
+          prices,
+          skuPrs
         ] = await Promise.all([
           customerService.fetchCustomers(),
           orderService.fetchOrders(),
@@ -427,6 +509,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           userService.fetchRolePermissions(),
           channelService.fetchSalesChannels(),
           productService.fetchChannelPrices(),
+          productService.fetchSkuChannelPrices(),
         ]);
 
         setRetailers(custs);
@@ -446,6 +529,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setRolePermissions(rPerms);
         setSalesChannels(channels);
         setChannelPrices(prices);
+        setSkuChannelPrices(skuPrs);
       }
     } catch (err: any) {
       console.error('Data refresh error:', err);
@@ -627,50 +711,89 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Cart operations
-  const addToCart = (productId: string, qty = 1) => {
+  const addToCart = (productId: string, qty = 1, skuId?: string) => {
     const prod = products.find(p => p.id === productId);
     if (!prod) return;
 
-    // Check if customer has channel-specific standard price
-    let effectivePrice = prod.defaultPrice;
+    // Find chosen SKU or default SKU
+    const targetSku = skuId
+      ? prod.skus?.find(s => s.id === skuId)
+      : (prod.skus?.find(s => s.isDefault) || prod.skus?.[0]);
+
+    // Check if customer has channel-specific standard price for this SKU
+    let effectivePrice = targetSku?.sellingPrice ?? prod.defaultPrice;
     if (currentRetailer?.salesChannelId) {
-      const cp = (prod.channelPrices || channelPrices).find(
-        c => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
-      );
-      if (cp) {
-        effectivePrice = cp.standardPrice;
+      if (targetSku?.channelPrices && targetSku.channelPrices.length > 0) {
+        const scp = targetSku.channelPrices.find(
+          c => c.channelId === currentRetailer.salesChannelId && c.isActive
+        );
+        if (scp) {
+          effectivePrice = scp.standardPrice;
+        }
+      } else {
+        // Fallback to product channel price
+        const cp = (prod.channelPrices || channelPrices).find(
+          c => c.productId === prod.id && c.channelId === currentRetailer.salesChannelId && c.isActive
+        );
+        if (cp) {
+          effectivePrice = cp.standardPrice;
+        }
       }
     }
 
     setCart(prev => {
-      const existing = prev.find(i => i.product.id === productId);
-      if (existing) {
-        return prev.map(item =>
-          item.product.id === productId
-            ? { ...item, quantity: item.quantity + qty }
-            : item
-        );
+      const matchIdx = prev.findIndex(item =>
+        item.product.id === productId && (targetSku ? item.sku?.id === targetSku.id : true)
+      );
+
+      if (matchIdx >= 0) {
+        const copy = [...prev];
+        copy[matchIdx] = {
+          ...copy[matchIdx],
+          unitPrice: effectivePrice,
+          quantity: copy[matchIdx].quantity + qty,
+        };
+        return copy;
       } else {
-        return [...prev, { product: { ...prod, defaultPrice: effectivePrice }, quantity: qty }];
+        return [
+          ...prev,
+          {
+            product: prod,
+            sku: targetSku,
+            unitPrice: effectivePrice,
+            quantity: qty,
+          },
+        ];
       }
     });
-    addToast(`Added ${prod.name} to cart`, 'info');
+
+    const skuLabel = targetSku?.variantName || targetSku?.packSize;
+    const label = skuLabel ? `${prod.name} (${skuLabel})` : prod.name;
+    addToast(`Added ${label} to cart`, 'info');
   };
 
-  const updateCartQty = (productId: string, qty: number) => {
+  const updateCartQty = (productId: string, qty: number, skuId?: string) => {
     if (qty <= 0) {
-      removeFromCart(productId);
+      removeFromCart(productId, skuId);
       return;
     }
     setCart(prev =>
-      prev.map(item =>
-        item.product.id === productId ? { ...item, quantity: qty } : item
-      )
+      prev.map(item => {
+        const matches = item.product.id === productId && (skuId ? item.sku?.id === skuId : true);
+        return matches ? { ...item, quantity: qty } : item;
+      })
     );
   };
 
-  const removeFromCart = (productId: string) => {
-    setCart(prev => prev.filter(item => item.product.id !== productId));
+  const removeFromCart = (productId: string, skuId?: string) => {
+    setCart(prev =>
+      prev.filter(item => {
+        if (skuId) {
+          return !(item.product.id === productId && item.sku?.id === skuId);
+        }
+        return item.product.id !== productId;
+      })
+    );
   };
 
   const clearCart = () => {
@@ -682,7 +805,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [cart]);
 
   const cartTotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.quantity * item.product.defaultPrice, 0);
+    return cart.reduce((acc, item) => acc + item.quantity * (item.unitPrice ?? item.product.defaultPrice), 0);
   }, [cart]);
 
   // Place order
@@ -697,12 +820,17 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const newOrder = await orderService.createOrder({
         customerId: currentRetailer.id,
-        items: cart.map(i => ({
-          productId: i.product.id,
-          productName: i.product.name,
-          quantity: i.quantity,
-          unitPrice: i.product.defaultPrice,
-        })),
+        items: cart.map(i => {
+          const skuLabel = i.sku?.variantName || i.sku?.packSize;
+          const displayName = skuLabel ? `${i.product.name} (${skuLabel})` : i.product.name;
+          return {
+            productId: i.product.id,
+            skuId: i.sku?.id,
+            productName: displayName,
+            quantity: i.quantity,
+            unitPrice: i.unitPrice ?? i.product.defaultPrice,
+          };
+        }),
         notes: notes || 'Booked via Customer Retailer Portal',
         deliveryDate: deliveryDate || new Date(Date.now() + 86400000).toISOString().split('T')[0],
       });
@@ -961,16 +1089,18 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Categories, Channels, and Pricing Actions
   const refreshPricingData = async () => {
     try {
-      const [prods, cats, chs, prs] = await Promise.all([
+      const [prods, cats, chs, prs, skuPrs] = await Promise.all([
         productService.fetchProducts(),
         productService.fetchCategoriesDetail(),
         channelService.fetchSalesChannels(),
         productService.fetchChannelPrices(),
+        productService.fetchSkuChannelPrices(),
       ]);
       setProducts(prods);
       setCategories(cats);
       setSalesChannels(chs);
       setChannelPrices(prs);
+      setSkuChannelPrices(skuPrs);
     } catch (err: any) {
       console.error('Failed to refresh pricing data:', err);
     }
@@ -1089,6 +1219,182 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // -------------------------------------------------------------
+  // Parent Product CRUD
+  // -------------------------------------------------------------
+  const createParentProduct = async (data: {
+    name: string;
+    categoryId: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }): Promise<Product> => {
+    try {
+      const newProd = await productService.createParentProduct(data);
+      await refreshPricingData();
+      addToast(`Product "${newProd.name}" created!`, 'success');
+      return newProd;
+    } catch (err: any) {
+      addToast(`Failed to create product: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateParentProduct = async (id: string, data: {
+    name?: string;
+    categoryId?: string;
+    description?: string;
+    brand?: string;
+    isActive?: boolean;
+    baseUnit?: string;
+  }) => {
+    try {
+      await productService.updateParentProduct(id, data);
+      await refreshPricingData();
+      addToast('Product updated successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update product: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const toggleParentProductActive = async (id: string, isActive: boolean) => {
+    try {
+      await productService.toggleParentProductActive(id, isActive);
+      setProducts(prev => prev.map(p => p.id === id ? { ...p, isActive, isAvailable: isActive } : p));
+      addToast(`Product ${isActive ? 'activated' : 'deactivated'}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteParentProduct = async (id: string) => {
+    try {
+      await productService.deleteParentProduct(id);
+      setProducts(prev => prev.filter(p => p.id !== id));
+      addToast('Product deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Child SKU CRUD
+  // -------------------------------------------------------------
+  const createSku = async (data: {
+    productId: string;
+    skuCode: string;
+    variantName: string;
+    packSize?: string;
+    quantity?: number;
+    unit: string;
+    mrp: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+    channelPrices?: {
+      channelId: string;
+      standardPrice: number;
+      minimumPrice: number;
+    }[];
+  }): Promise<ProductSku> => {
+    try {
+      const newSku = await productService.createSku(data);
+      await refreshPricingData();
+      addToast(`SKU "${newSku.skuCode}" (${newSku.variantName}) added!`, 'success');
+      return newSku;
+    } catch (err: any) {
+      addToast(`Failed to add SKU: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateSku = async (id: string, data: {
+    skuCode?: string;
+    variantName?: string;
+    packSize?: string;
+    quantity?: number;
+    unit?: string;
+    mrp?: number;
+    sellingPrice?: number;
+    barcode?: string;
+    isDefault?: boolean;
+    isActive?: boolean;
+  }) => {
+    try {
+      await productService.updateSku(id, data);
+      await refreshPricingData();
+      addToast('SKU updated successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update SKU: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const toggleSkuActive = async (id: string, isActive: boolean) => {
+    try {
+      await productService.toggleSkuActive(id, isActive);
+      await refreshPricingData();
+      addToast(`SKU ${isActive ? 'activated' : 'deactivated'}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update SKU status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteSku = async (id: string) => {
+    try {
+      await productService.deleteSku(id);
+      await refreshPricingData();
+      addToast('SKU deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  // -------------------------------------------------------------
+  // SKU Channel Pricing
+  // -------------------------------------------------------------
+  const saveSkuChannelPrice = async (data: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }) => {
+    try {
+      const saved = await productService.saveSkuChannelPrice(data);
+      await refreshPricingData();
+      addToast('SKU channel pricing updated successfully', 'success');
+      return saved;
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const saveMultipleSkuChannelPrices = async (prices: {
+    skuId: string;
+    channelId: string;
+    standardPrice: number;
+    minimumPrice: number;
+    isActive?: boolean;
+  }[]) => {
+    try {
+      await productService.saveMultipleSkuChannelPrices(prices);
+      await refreshPricingData();
+      addToast('All SKU channel prices saved successfully!', 'success');
+    } catch (err: any) {
+      addToast(err.message, 'error');
+      throw err;
+    }
+  };
+
   // Internal Customer Creation from ERP
   const registerRetailer = async (data: {
     businessName: string;
@@ -1137,7 +1443,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const createInternalOrder = async (params: {
     customerId: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -1150,6 +1457,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         customerId: params.customerId,
         items: params.items.map(i => ({
           productId: i.productId,
+          skuId: i.skuId,
           productName: i.productName || products.find(p => p.id === i.productId)?.name || 'Product',
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -1173,7 +1481,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const editOrder = async (orderId: string, params: {
     customerId?: string;
     items: {
-      productId: string;
+      productId?: string;
+      skuId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -1183,7 +1492,19 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     status?: OrderStatus;
   }): Promise<Order> => {
     try {
-      const updatedOrder = await orderService.updateOrder(orderId, params);
+      const updatedOrder = await orderService.updateOrder(orderId, {
+        customerId: params.customerId,
+        items: params.items.map(i => ({
+          productId: i.productId,
+          skuId: i.skuId,
+          productName: i.productName || products.find(p => p.id === i.productId)?.name || 'Product',
+          quantity: i.quantity,
+          unitPrice: i.unitPrice,
+        })),
+        notes: params.notes,
+        deliveryDate: params.deliveryDate,
+        status: params.status,
+      });
       setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
       addToast(`Order ${updatedOrder.orderNumber} updated successfully!`, 'success');
       return updatedOrder;
@@ -1265,6 +1586,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         categories,
         salesChannels,
         channelPrices,
+        skuChannelPrices,
 
         cart,
         cartCount,
@@ -1287,6 +1609,19 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         saveChannelPrice,
         saveMultipleChannelPrices,
         refreshPricingData,
+
+        createParentProduct,
+        updateParentProduct,
+        toggleParentProductActive,
+        deleteParentProduct,
+
+        createSku,
+        updateSku,
+        toggleSkuActive,
+        deleteSku,
+
+        saveSkuChannelPrice,
+        saveMultipleSkuChannelPrices,
 
         addProduct,
         createProductionBatch,

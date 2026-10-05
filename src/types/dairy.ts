@@ -48,13 +48,40 @@ export interface ProductChannelPrice {
   updatedAt?: string;
 }
 
+export interface SkuChannelPrice {
+  id: string;
+  skuId: string;
+  skuCode?: string;
+  variantName?: string;
+  productId?: string;
+  productName?: string;
+  channelId: string;
+  channelName?: string;
+  channelCode?: string;
+  standardPrice: number;
+  minimumPrice: number;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ProductSku {
   id: string;
+  productId?: string;
+  productName?: string;
   skuCode: string;
+  variantName?: string; // e.g. "500gm", "1kg", "2kg"
   packSize: string; // e.g. "500 ml", "1 Litre", "250 g"
+  quantity?: number; // e.g. 500, 1, 2
+  unit?: string; // e.g. "gm", "kg", "ml", "L", "pouch"
   mrp: number;
-  sellingPrice: number;
+  sellingPrice?: number;
+  barcode?: string;
   isDefault?: boolean;
+  isActive?: boolean;
+  channelPrices?: SkuChannelPrice[];
+  channelCount?: number;
+  pricingStatus?: 'configured' | 'partial' | 'not_configured';
 }
 
 export interface Product {
@@ -64,15 +91,18 @@ export interface Product {
   nameHi?: string;
   categoryId?: string;
   category: ProductCategory;
+  brand?: string;
   unit: string; // e.g. "500 ml pouch", "250g box", "1 kg tin"
   mrp?: number;
   defaultPrice: number;
   shelfLifeDays: number;
   description: string;
   isAvailable: boolean;
+  isActive?: boolean;
   minStockThreshold: number;
   imageUrl?: string;
-  skus?: ProductSku[];
+  skus: ProductSku[];
+  skuCount?: number;
   channelPrices?: ProductChannelPrice[];
   channelCount?: number;
   pricingStatus?: 'configured' | 'partial' | 'not_configured';
@@ -135,6 +165,9 @@ export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'dispatched' |
 export interface OrderItem {
   productId: string;
   productName: string;
+  skuId?: string;
+  skuCode?: string;
+  variantName?: string;
   batchNumber?: string;
   unit: string;
   quantity: number;

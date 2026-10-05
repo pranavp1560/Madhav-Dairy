@@ -24,6 +24,7 @@ interface OrderFormModalProps {
 
 interface FormItemRow {
   productId: string;
+  skuId?: string;
   quantity: number;
   unitPrice: number;
 }
@@ -37,6 +38,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
     retailers,
     products,
     channelPrices,
+    skuChannelPrices,
     salesChannels,
     createInternalOrder,
     editOrder,
@@ -60,12 +62,46 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
   const customerChannelName = selectedCustomer?.salesChannelName || (salesChannels.find(c => c.id === customerChannelId)?.name) || 'Wholesale';
   const customerChannelCode = selectedCustomer?.salesChannelCode || (salesChannels.find(c => c.id === customerChannelId)?.code) || 'WHOLESALE';
 
-  // Helper to fetch channel price for a product
-  const getProductPricing = (prodId: string) => {
+  // Helper to fetch channel price for a product or SKU
+  const getItemPricing = (productId: string, skuId?: string) => {
     if (!customerChannelId) return null;
-    return channelPrices.find(
-      cp => cp.productId === prodId && cp.channelId === customerChannelId && cp.isActive
+
+    if (skuId) {
+      const prod = products.find(p => p.id === productId);
+      const sku = prod?.skus?.find(s => s.id === skuId);
+      const skuPrice = sku?.channelPrices?.find(
+        cp => cp.channelId === customerChannelId && cp.isActive
+      ) || skuChannelPrices.find(
+        cp => cp.skuId === skuId && cp.channelId === customerChannelId && cp.isActive
+      );
+
+      if (skuPrice) {
+        return {
+          standardPrice: skuPrice.standardPrice,
+          minimumPrice: skuPrice.minimumPrice,
+        };
+      }
+    }
+
+    // Fallback to product channel price
+    const cp = channelPrices.find(
+      c => c.productId === productId && c.channelId === customerChannelId && c.isActive
     );
+    if (cp) {
+      return {
+        standardPrice: cp.standardPrice,
+        minimumPrice: cp.minimumPrice,
+      };
+    }
+    return null;
+  };
+
+  // Helper to find default SKU or first SKU for a product
+  const getInitialSkuId = (prodId: string) => {
+    const prod = products.find(p => p.id === prodId);
+    if (!prod || !prod.skus || prod.skus.length === 0) return undefined;
+    const def = prod.skus.find(s => s.isDefault);
+    return def ? def.id : prod.skus[0].id;
   };
 
   // Initialize or reset form state when modal opens or orderToEdit changes
@@ -84,36 +120,43 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
         setRows(
           orderToEdit.items.map(it => ({
             productId: it.productId,
+            skuId: it.skuId || getInitialSkuId(it.productId),
             quantity: it.quantity,
             unitPrice: it.unitPrice,
           }))
         );
       } else if (products.length > 0) {
-        setRows([{ productId: products[0].id, quantity: 10, unitPrice: products[0].defaultPrice }]);
+        const p = products[0];
+        const initialSkuId = getInitialSkuId(p.id);
+        const pricing = getItemPricing(p.id, initialSkuId);
+        const rate = pricing ? pricing.standardPrice : p.defaultPrice;
+        setRows([{ productId: p.id, skuId: initialSkuId, quantity: 10, unitPrice: rate }]);
       }
     } else {
       // Create Mode
       const initialCustId = retailers[0]?.id || '';
       setCustomerId(initialCustId);
-      // Default delivery date: tomorrow
       const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
       setDeliveryDate(tomorrow);
       setStatus('pending');
       setNotes('Telephone / counter booking recorded by staff');
 
       if (products.length > 0) {
-        const prod = products[0];
+        const p = products[0];
+        const initialSkuId = getInitialSkuId(p.id);
         const initialChannel = retailers[0]?.salesChannelId;
-        const cp = channelPrices.find(c => c.productId === prod.id && c.channelId === initialChannel && c.isActive);
-        const rate = cp ? cp.standardPrice : prod.defaultPrice;
-        setRows([{ productId: prod.id, quantity: 10, unitPrice: rate }]);
+        const cp = (initialSkuId
+          ? skuChannelPrices.find(s => s.skuId === initialSkuId && s.channelId === initialChannel && s.isActive)
+          : null) || channelPrices.find(c => c.productId === p.id && c.channelId === initialChannel && c.isActive);
+        const rate = cp ? cp.standardPrice : p.defaultPrice;
+        setRows([{ productId: p.id, skuId: initialSkuId, quantity: 10, unitPrice: rate }]);
       } else {
         setRows([]);
       }
     }
   }, [isOpen, orderToEdit, retailers, products]);
 
-  // Handle switching customer on Create mode: re-evaluate default channel rates
+  // Handle switching customer on Create mode: re-evaluate channel rates
   const handleCustomerChange = (newCustId: string) => {
     setCustomerId(newCustId);
     if (!isEditMode && rows.length > 0) {
@@ -122,26 +165,34 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
       setRows(prev =>
         prev.map(r => {
-          const cp = channelPrices.find(c => c.productId === r.productId && c.channelId === chId && c.isActive);
+          const pricing = getItemPricing(r.productId, r.skuId);
           const prod = products.find(p => p.id === r.productId);
+          const sku = prod?.skus?.find(s => s.id === r.skuId);
+          const fallbackPrice = sku?.sellingPrice || prod?.defaultPrice || r.unitPrice;
           return {
             ...r,
-            unitPrice: cp ? cp.standardPrice : (prod?.defaultPrice || r.unitPrice),
+            unitPrice: pricing ? pricing.standardPrice : fallbackPrice,
           };
         })
       );
     }
   };
 
-  const handleProductChange = (index: number, newProdId: string) => {
-    const prod = products.find(p => p.id === newProdId);
-    const cp = getProductPricing(newProdId);
-    const stdPrice = cp ? cp.standardPrice : (prod?.defaultPrice || 100);
+  const handleItemSelectChange = (index: number, compoundVal: string) => {
+    // Format: "productId::skuId"
+    const [pId, sId] = compoundVal.split('::');
+    const skuId = sId === 'default' ? undefined : sId;
+
+    const prod = products.find(p => p.id === pId);
+    const sku = prod?.skus?.find(s => s.id === skuId);
+    const pricing = getItemPricing(pId, skuId);
+    const stdPrice = pricing ? pricing.standardPrice : (sku?.sellingPrice || prod?.defaultPrice || 100);
 
     const updated = [...rows];
     updated[index] = {
       ...updated[index],
-      productId: newProdId,
+      productId: pId,
+      skuId,
       unitPrice: stdPrice,
     };
     setRows(updated);
@@ -155,13 +206,15 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   const addRow = () => {
     const defaultProd = products[0];
-    const cp = defaultProd ? getProductPricing(defaultProd.id) : null;
-    const rate = cp ? cp.standardPrice : (defaultProd?.defaultPrice || 100);
+    const initialSkuId = defaultProd ? getInitialSkuId(defaultProd.id) : undefined;
+    const pricing = defaultProd ? getItemPricing(defaultProd.id, initialSkuId) : null;
+    const rate = pricing ? pricing.standardPrice : (defaultProd?.defaultPrice || 100);
 
     setRows(prev => [
       ...prev,
       {
         productId: defaultProd?.id || '',
+        skuId: initialSkuId,
         quantity: 5,
         unitPrice: rate,
       },
@@ -179,13 +232,18 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
 
   // Check for floor violations
   const floorViolations = rows.map((r, idx) => {
-    const cp = getProductPricing(r.productId);
+    const pricing = getItemPricing(r.productId, r.skuId);
     const prod = products.find(p => p.id === r.productId);
-    const minPrice = cp ? cp.minimumPrice : 0;
+    const sku = prod?.skus?.find(s => s.id === r.skuId);
+    const skuLabel = sku?.variantName || sku?.packSize;
+    const displayName = skuLabel ? `${prod?.name || 'Product'} (${skuLabel})` : (prod?.name || 'Product');
+
+    const minPrice = pricing ? pricing.minimumPrice : 0;
     const isBelowFloor = minPrice > 0 && r.unitPrice < minPrice;
+
     return {
       index: idx,
-      productName: prod?.name || 'Product',
+      productName: displayName,
       enteredPrice: r.unitPrice,
       minPrice,
       isBelowFloor,
@@ -228,9 +286,14 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
     try {
       const itemsPayload = rows.map(r => {
         const prod = products.find(p => p.id === r.productId);
+        const sku = prod?.skus?.find(s => s.id === r.skuId);
+        const skuLabel = sku?.variantName || sku?.packSize;
+        const displayName = skuLabel ? `${prod?.name || 'Dairy Product'} (${skuLabel})` : (prod?.name || 'Dairy Product');
+
         return {
           productId: r.productId,
-          productName: prod?.name || 'Dairy Product',
+          skuId: r.skuId,
+          productName: displayName,
           quantity: Number(r.quantity),
           unitPrice: Number(r.unitPrice),
         };
@@ -273,7 +336,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
       }
       maxWidth="4xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+      <form onSubmit={handleSubmit} className="space-y-4 text-xs font-sans">
         {/* Error / Alert Banners */}
         {validationError && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-red-700 font-medium">
@@ -377,7 +440,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 Order Line Items
               </h4>
               <p className="text-[10px] text-slate-500">
-                Selling price can be anywhere between Channel Standard Price and Floor Price (cannot sell below Floor).
+                Select sellable SKU pack. Selling price can be anywhere between Channel Standard Price and Floor Price (cannot sell below Floor).
               </p>
             </div>
             <button
@@ -396,7 +459,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               <table className="w-full text-xs min-w-[640px]">
                 <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200 text-[11px]">
                   <tr>
-                    <th className="py-2.5 px-3 text-left">Product & SKU</th>
+                    <th className="py-2.5 px-3 text-left">Product Family & Child SKU Variant</th>
                     <th className="py-2.5 px-3 text-center w-28">Quantity</th>
                     <th className="py-2.5 px-3 text-center w-36">Selling Price (₹)</th>
                     <th className="py-2.5 px-3 text-right w-28">Line Total</th>
@@ -406,33 +469,60 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                 <tbody className="divide-y divide-slate-100">
                   {rows.map((row, idx) => {
                     const prod = products.find(p => p.id === row.productId);
-                    const cp = getProductPricing(row.productId);
-                    const minPrice = cp ? cp.minimumPrice : 0;
-                    const stdPrice = cp ? cp.standardPrice : (prod?.defaultPrice || 0);
+                    const sku = prod?.skus?.find(s => s.id === row.skuId);
+                    const pricing = getItemPricing(row.productId, row.skuId);
+                    const minPrice = pricing ? pricing.minimumPrice : 0;
+                    const stdPrice = pricing ? pricing.standardPrice : (sku?.sellingPrice || prod?.defaultPrice || 0);
                     const isBelowFloor = minPrice > 0 && row.unitPrice < minPrice;
                     const lineTotal = (row.quantity || 0) * (row.unitPrice || 0);
+
+                    const compoundValue = `${row.productId}::${row.skuId || 'default'}`;
 
                     return (
                       <tr key={idx} className={`hover:bg-slate-50/70 transition-colors ${isBelowFloor ? 'bg-red-50/40' : ''}`}>
                         {/* Product & SKU Select */}
                         <td className="py-3 px-3 align-top">
                           <select
-                            value={row.productId}
-                            onChange={e => handleProductChange(idx, e.target.value)}
+                            value={compoundValue}
+                            onChange={e => handleItemSelectChange(idx, e.target.value)}
                             className="w-full py-1.5 px-2.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-900 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition-all shadow-2xs"
                           >
-                            {products.map(p => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({p.unit})
-                              </option>
-                            ))}
+                            {products.map(p => {
+                              const skus = p.skus || [];
+                              if (skus.length === 0) {
+                                return (
+                                  <option key={p.id} value={`${p.id}::default`}>
+                                    {p.name} ({p.unit})
+                                  </option>
+                                );
+                              }
+                              return (
+                                <optgroup key={p.id} label={`${p.name} (${p.category})`}>
+                                  {skus.map(s => (
+                                    <option key={s.id} value={`${p.id}::${s.id}`}>
+                                      {p.name} — {s.variantName || s.packSize} [{s.skuCode}] (MRP ₹{s.mrp})
+                                    </option>
+                                  ))}
+                                </optgroup>
+                              );
+                            })}
                           </select>
+
+                          {/* Price Floor & Standard Guidance */}
                           <div className="flex items-center gap-2 mt-1.5 text-[10px] text-slate-500 font-mono-numbers px-0.5">
-                            <span className="font-medium text-slate-600">Std: ₹{stdPrice}</span>
-                            <span className="text-slate-300">&bull;</span>
-                            <span className={minPrice > 0 ? 'text-amber-700 font-semibold' : ''}>
-                              Floor: ₹{minPrice}
+                            <span className="font-medium text-slate-600">
+                              Channel Std: <strong className="text-slate-900">₹{stdPrice}</strong>
                             </span>
+                            <span className="text-slate-300">&bull;</span>
+                            <span className={minPrice > 0 ? 'text-amber-800 font-bold' : ''}>
+                              Floor Limit: ₹{minPrice}
+                            </span>
+                            {sku?.mrp && (
+                              <>
+                                <span className="text-slate-300">&bull;</span>
+                                <span className="text-slate-400">MRP ₹{sku.mrp}</span>
+                              </>
+                            )}
                           </div>
                         </td>
 
@@ -449,7 +539,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                               className="w-full py-1.5 px-2 bg-white border border-slate-300 rounded-lg text-xs font-mono-numbers text-center font-bold text-slate-900 focus:border-blue-600 focus:ring-1 focus:ring-blue-600 focus:outline-none transition-all shadow-2xs"
                             />
                             <span className="block text-[10px] text-slate-400 mt-1 font-medium truncate text-center">
-                              {prod?.unit || 'units'}
+                              {sku?.packSize || prod?.unit || 'packs'}
                             </span>
                           </div>
                         </td>
@@ -479,7 +569,7 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
                               <div className={`text-[10px] mt-1 font-mono-numbers text-center font-semibold ${
                                 isBelowFloor ? 'text-red-600 font-bold' : 'text-slate-500'
                               }`}>
-                                {isBelowFloor ? `Floor: ₹${minPrice}` : `Min: ₹${minPrice}`}
+                                {isBelowFloor ? `Below floor ₹${minPrice}!` : `Floor: ₹${minPrice}`}
                               </div>
                             )}
                           </div>
