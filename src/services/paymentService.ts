@@ -14,6 +14,9 @@ export const paymentService = {
         payment_method,
         reference_number,
         notes,
+        is_accounted,
+        accounted_at,
+        accounted_by,
         customers(business_name),
         payment_allocations(
           allocated_amount,
@@ -38,6 +41,9 @@ export const paymentService = {
         reference: p.reference_number || 'Direct Transfer',
         notes: p.notes || undefined,
         recordedBy: 'Finance Desk',
+        isAccounted: p.is_accounted || false,
+        accountedAt: p.accounted_at || undefined,
+        accountedBy: p.accounted_by || undefined,
       };
     });
   },
@@ -67,7 +73,49 @@ export const paymentService = {
 
     const today = new Date().toISOString().split('T')[0];
 
-    // 1. Insert payment
+    // If linked to an invoice, use the workflow RPC
+    if (params.invoiceNumber && params.invoiceNumber !== 'Direct Payment') {
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('id, total_amount, status')
+        .eq('invoice_number', params.invoiceNumber)
+        .maybeSingle();
+
+      if (inv) {
+        // If invoice is still 'ready', mark it delivered first so payment can be allocated
+        if (inv.status === 'ready') {
+          await supabase.rpc('mark_invoice_delivered', { p_invoice_id: inv.id });
+        }
+
+        const { data: allocResult, error: allocErr } = await supabase.rpc('allocate_invoice_payment', {
+          p_invoice_id: inv.id,
+          p_amount: params.amount,
+          p_payment_method: params.paymentMethod,
+          p_reference: params.reference,
+          p_notes: params.notes || null,
+          p_payment_date: today
+        });
+
+        if (allocErr) throw allocErr;
+
+        return {
+          id: allocResult?.payment_id || `temp-${Date.now()}`,
+          paymentNumber: allocResult?.payment_number || payNum,
+          date: today,
+          retailerId: params.retailerId,
+          retailerName: 'Retailer Customer',
+          invoiceNumber: params.invoiceNumber,
+          amount: params.amount,
+          paymentMethod: params.paymentMethod,
+          reference: params.reference,
+          notes: params.notes,
+          recordedBy: 'Finance Desk',
+          isAccounted: false,
+        };
+      }
+    }
+
+    // Direct unallocated payment fallback
     const { data: newPay, error: pErr } = await supabase
       .from('payments')
       .insert({
@@ -79,36 +127,14 @@ export const paymentService = {
         payment_method: params.paymentMethod,
         reference_number: params.reference,
         notes: params.notes || null,
+        is_accounted: false,
       })
       .select('*, customers(business_name)')
       .single();
 
     if (pErr) throw pErr;
 
-    // 2. Locate invoice if applicable
-    if (params.invoiceNumber && params.invoiceNumber !== 'Direct Payment') {
-      const { data: inv } = await supabase
-        .from('invoices')
-        .select('id, total_amount')
-        .eq('invoice_number', params.invoiceNumber)
-        .maybeSingle();
-
-      if (inv) {
-        // Allocate payment
-        await supabase.from('payment_allocations').insert({
-          payment_id: newPay.id,
-          invoice_id: inv.id,
-          allocated_amount: params.amount,
-        });
-
-        // Update invoice status if paid in full
-        await supabase.from('invoices').update({
-          status: 'paid'
-        }).eq('id', inv.id);
-      }
-    }
-
-    // 3. Post double-entry Credit to customer ledger
+    // Post double-entry Credit to customer ledger
     await supabase.from('ledger_entries').insert({
       organization_id: orgId,
       customer_id: params.retailerId,
@@ -133,6 +159,7 @@ export const paymentService = {
       reference: params.reference,
       notes: params.notes,
       recordedBy: 'Finance Desk',
+      isAccounted: false,
     };
   }
 };

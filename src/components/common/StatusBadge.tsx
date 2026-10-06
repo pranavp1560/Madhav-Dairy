@@ -15,7 +15,7 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
   const sizeClasses = size === 'sm' ? 'px-2 py-0.5 text-xs' : 'px-2.5 py-1 text-xs';
 
   if (type === 'order') {
-    const s = status as OrderStatus;
+    const s = status as string;
     switch (s) {
       case 'pending':
         return <span className={`${sizeClasses} rounded-full font-medium bg-amber-50 text-amber-700 border border-amber-200`}>Pending</span>;
@@ -88,12 +88,23 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 
   if (type === 'invoice') {
     switch (status) {
+      case 'ready':
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-sky-50 text-sky-700 border border-sky-200`}>Ready</span>;
+      case 'delivered':
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200`}>Delivered</span>;
+      case 'open_payment':
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-amber-50 text-amber-700 border border-amber-200`}>Open Payment</span>;
+      case 'settled':
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200`}>Settled</span>;
+      case 'cancelled':
+        return <span className={`${sizeClasses} rounded-full font-medium bg-slate-100 text-slate-600 border border-slate-200`}>Cancelled</span>;
+      // Legacy fallback
       case 'paid':
-        return <span className={`${sizeClasses} rounded-full font-semibold bg-green-50 text-green-700 border border-green-200`}>Paid</span>;
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200`}>Settled</span>;
       case 'partial':
-        return <span className={`${sizeClasses} rounded-full font-semibold bg-amber-50 text-amber-700 border border-amber-200`}>Partial</span>;
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-amber-50 text-amber-700 border border-amber-200`}>Open Payment</span>;
       case 'unpaid':
-        return <span className={`${sizeClasses} rounded-full font-semibold bg-red-50 text-red-700 border border-red-200`}>Unpaid</span>;
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-sky-50 text-sky-700 border border-sky-200`}>Ready</span>;
       default:
         return <span className={`${sizeClasses} rounded-full font-medium bg-slate-100 text-slate-600`}>{status}</span>;
     }

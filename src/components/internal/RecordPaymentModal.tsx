@@ -79,13 +79,22 @@ export const RecordPaymentModal: React.FC<RecordPaymentModalProps> = ({
             <label className="block font-semibold text-slate-700 mb-1">
               Against Invoice
             </label>
-            <input
-              type="text"
+            <select
               value={invoiceNumber}
-              onChange={e => setInvoiceNumber(e.target.value)}
-              placeholder="e.g. INV-1021"
-              className="w-full p-2.5 bg-slate-50/50 border border-slate-300 rounded-lg text-xs font-mono-numbers focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-            />
+              onChange={e => {
+                setInvoiceNumber(e.target.value);
+                const inv = retailerInvoices.find(i => i.invoiceNumber === e.target.value);
+                if (inv) setAmount(inv.outstandingAmount);
+              }}
+              className="w-full p-2.5 bg-slate-50/50 border border-slate-300 rounded-lg text-xs font-mono-numbers focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none cursor-pointer"
+            >
+              <option value="Direct Payment">Direct Payment (Unallocated)</option>
+              {retailerInvoices.map(i => (
+                <option key={i.id} value={i.invoiceNumber}>
+                  {i.invoiceNumber} (Dues: ₹{i.outstandingAmount.toLocaleString('en-IN')})
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

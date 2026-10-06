@@ -160,7 +160,7 @@ export interface Retailer {
   salesChannelCode?: string;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'preparing' | 'dispatched' | 'delivered' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'cancelled';
 
 export interface OrderItem {
   productId: string;
@@ -191,6 +191,12 @@ export interface Order {
   paymentStatus: 'paid' | 'unpaid' | 'partial';
   notes?: string;
   dispatchDate?: string;
+  confirmedAt?: string;
+  confirmedBy?: string;
+  dispatchedAt?: string;
+  dispatchedBy?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
 }
 
 export interface InvoiceItem {
@@ -205,10 +211,13 @@ export interface InvoiceItem {
   amount: number;
 }
 
+export type InvoiceStatus = 'ready' | 'delivered' | 'open_payment' | 'settled' | 'cancelled';
+
 export interface Invoice {
   id: string;
   invoiceNumber: string; // e.g. "INV-1025"
   orderId?: string;
+  orderNumber?: string;
   retailerId: string;
   retailerName: string;
   retailerGstin: string;
@@ -222,7 +231,11 @@ export interface Invoice {
   totalAmount: number;
   paidAmount: number;
   outstandingAmount: number;
-  status: 'paid' | 'partial' | 'unpaid';
+  status: InvoiceStatus;
+  deliveredAt?: string;
+  deliveredBy?: string;
+  settledAt?: string;
+  settledBy?: string;
 }
 
 export type PaymentMethod = 'cash' | 'upi' | 'bank_transfer' | 'cheque' | 'credit' | 'other';
@@ -239,6 +252,9 @@ export interface Payment {
   reference: string;
   notes?: string;
   recordedBy: string;
+  isAccounted?: boolean;
+  accountedAt?: string;
+  accountedBy?: string;
 }
 
 export interface LedgerEntry {

@@ -422,11 +422,9 @@ export const OrderFormModal: React.FC<OrderFormModalProps> = ({
               onChange={e => setStatus(e.target.value as OrderStatus)}
               className="px-3 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-900 focus:outline-none cursor-pointer"
             >
-              <option value="pending">PENDING (Awaiting Review)</option>
-              <option value="confirmed">CONFIRMED (Accepted)</option>
-              <option value="preparing">PREPARING (Production / Packing)</option>
+              <option value="pending">PENDING (Awaiting Confirmation)</option>
+              <option value="confirmed">CONFIRMED (Production Ready)</option>
               <option value="dispatched">DISPATCHED (Out for Delivery)</option>
-              <option value="delivered">DELIVERED (Fulfilled)</option>
               <option value="cancelled">CANCELLED</option>
             </select>
           </div>

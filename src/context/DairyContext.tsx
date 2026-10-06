@@ -22,7 +22,8 @@ import {
   SalesChannel,
   ProductChannelPrice,
   ProductSku,
-  SkuChannelPrice
+  SkuChannelPrice,
+  PaymentMethod
 } from '../types/dairy';
 import {
   authService,
@@ -296,6 +297,22 @@ interface DairyContextType {
   }) => Promise<Retailer>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
+  confirmOrder: (orderId: string) => Promise<void>;
+  dispatchOrder: (orderId: string) => Promise<{ invoiceId?: string; invoiceNumber?: string }>;
+  bulkConfirmOrders: (orderIds: string[]) => Promise<{ confirmed_count?: number; skipped_count?: number }>;
+  bulkDispatchOrders: (orderIds: string[]) => Promise<{ dispatched_count?: number; skipped_count?: number; failed_count?: number }>;
+  markInvoiceDelivered: (invoiceId: string) => Promise<void>;
+  bulkDeliverInvoices: (invoiceIds: string[]) => Promise<{ delivered_count?: number; skipped_count?: number }>;
+  allocateInvoicePayment: (params: {
+    invoiceId: string;
+    amount: number;
+    paymentMethod?: PaymentMethod;
+    reference?: string;
+    notes?: string;
+    paymentDate?: string;
+  }) => Promise<void>;
+  confirmInvoicePayment: (invoiceId: string) => Promise<void>;
+  bulkConfirmInvoicePayments: (invoiceIds: string[]) => Promise<{ settled_count?: number; skipped_count?: number }>;
   createInternalOrder: (params: {
     customerId: string;
     items: {
@@ -1435,11 +1452,177 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Order and Invoice Lifecycle Workflows
+  const confirmOrder = async (orderId: string) => {
+    try {
+      await orderService.confirmOrder(orderId, currentUser?.id);
+      const updatedOrders = await orderService.fetchOrders();
+      setOrders(updatedOrders);
+      addToast('Order confirmed successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to confirm order: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const dispatchOrder = async (orderId: string) => {
+    try {
+      const res = await orderService.dispatchOrder(orderId, currentUser?.id);
+      const [updatedOrders, updatedInvoices] = await Promise.all([
+        orderService.fetchOrders(),
+        invoiceService.fetchInvoices(),
+      ]);
+      setOrders(updatedOrders);
+      setInvoices(updatedInvoices);
+      addToast(`Order dispatched! Invoice ${res.invoice_number || ''} generated.`, 'success');
+      return { invoiceId: res.invoice_id, invoiceNumber: res.invoice_number };
+    } catch (err: any) {
+      addToast(`Failed to dispatch order: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const bulkConfirmOrders = async (orderIds: string[]) => {
+    try {
+      const res = await orderService.bulkConfirmOrders(orderIds, currentUser?.id);
+      const updatedOrders = await orderService.fetchOrders();
+      setOrders(updatedOrders);
+      addToast(`${res.confirmed_count} order(s) confirmed!`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to bulk confirm: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const bulkDispatchOrders = async (orderIds: string[]) => {
+    try {
+      const res = await orderService.bulkDispatchOrders(orderIds, currentUser?.id);
+      const [updatedOrders, updatedInvoices] = await Promise.all([
+        orderService.fetchOrders(),
+        invoiceService.fetchInvoices(),
+      ]);
+      setOrders(updatedOrders);
+      setInvoices(updatedInvoices);
+      addToast(`${res.dispatched_count} order(s) dispatched! ${res.invoices_created} invoice(s) generated.`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to bulk dispatch: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const markInvoiceDelivered = async (invoiceId: string) => {
+    try {
+      await invoiceService.markDelivered(invoiceId, currentUser?.id);
+      const updatedInvoices = await invoiceService.fetchInvoices();
+      setInvoices(updatedInvoices);
+      addToast('Invoice marked as Delivered!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to deliver invoice: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const bulkDeliverInvoices = async (invoiceIds: string[]) => {
+    try {
+      const res = await invoiceService.bulkDeliver(invoiceIds, currentUser?.id);
+      const updatedInvoices = await invoiceService.fetchInvoices();
+      setInvoices(updatedInvoices);
+      addToast(`${res.delivered_count} invoice(s) marked as Delivered!`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to bulk deliver invoices: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const allocateInvoicePayment = async (params: {
+    invoiceId: string;
+    amount: number;
+    paymentMethod?: PaymentMethod;
+    reference?: string;
+    notes?: string;
+    paymentDate?: string;
+  }) => {
+    try {
+      await invoiceService.allocatePayment({
+        invoiceId: params.invoiceId,
+        amount: params.amount,
+        paymentMethod: params.paymentMethod,
+        reference: params.reference,
+        notes: params.notes,
+        userId: currentUser?.id,
+        paymentDate: params.paymentDate,
+      });
+      const [updatedInvoices, updatedPayments] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        paymentService.fetchPayments(),
+      ]);
+      setInvoices(updatedInvoices);
+      setPayments(updatedPayments);
+      addToast(`Payment of ₹${params.amount.toLocaleString('en-IN')} allocated!`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to allocate payment: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const confirmInvoicePayment = async (invoiceId: string) => {
+    try {
+      const res = await invoiceService.confirmPayment(invoiceId, currentUser?.id);
+      const [updatedInvoices, updatedPayments, updatedLedger, updatedRetailers] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        paymentService.fetchPayments(),
+        ledgerService.fetchLedger(),
+        customerService.fetchCustomers(),
+      ]);
+      setInvoices(updatedInvoices);
+      setPayments(updatedPayments);
+      setLedger(updatedLedger);
+      setRetailers(updatedRetailers);
+      addToast(res.fully_settled ? 'Payment confirmed! Invoice is Settled.' : 'Payment confirmed (partially accounted).', 'success');
+    } catch (err: any) {
+      addToast(`Failed to confirm payment: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const bulkConfirmInvoicePayments = async (invoiceIds: string[]) => {
+    try {
+      const res = await invoiceService.bulkConfirmPayments(invoiceIds, currentUser?.id);
+      const [updatedInvoices, updatedPayments, updatedLedger, updatedRetailers] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        paymentService.fetchPayments(),
+        ledgerService.fetchLedger(),
+        customerService.fetchCustomers(),
+      ]);
+      setInvoices(updatedInvoices);
+      setPayments(updatedPayments);
+      setLedger(updatedLedger);
+      setRetailers(updatedRetailers);
+      addToast(`${res.settled_count} invoice(s) settled!`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to bulk confirm payments: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Order status
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     try {
-      await orderService.updateOrderStatus(orderId, status);
-      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, status } : o));
+      if (status === 'confirmed') {
+        await confirmOrder(orderId);
+        return;
+      }
+      if (status === 'dispatched') {
+        await dispatchOrder(orderId);
+        return;
+      }
+      await orderService.updateOrderStatus(orderId, status, currentUser?.id);
+      const updatedOrders = await orderService.fetchOrders();
+      setOrders(updatedOrders);
       addToast(`Order status updated to ${status}`, 'success');
     } catch (err: any) {
       addToast(`Failed to update order: ${err.message}`, 'error');
@@ -1642,6 +1825,15 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updateUserRole,
         registerRetailer,
         updateOrderStatus,
+        confirmOrder,
+        dispatchOrder,
+        bulkConfirmOrders,
+        bulkDispatchOrders,
+        markInvoiceDelivered,
+        bulkDeliverInvoices,
+        allocateInvoicePayment,
+        confirmInvoicePayment,
+        bulkConfirmInvoicePayments,
         createInternalOrder,
         editOrder,
         toggleExpiryRule,

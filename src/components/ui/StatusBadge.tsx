@@ -24,13 +24,13 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
 
   if (!tone) {
     const s = status.toLowerCase();
-    if (['healthy', 'active', 'delivered', 'paid', 'success', 'available', 'completed'].includes(s)) {
+    if (['healthy', 'active', 'delivered', 'paid', 'settled', 'success', 'available', 'completed'].includes(s)) {
       effectiveTone = 'green';
-    } else if (['near_expiry', 'soon', 'upcoming', 'preparing', 'partial', 'low_stock', 'warning'].includes(s)) {
+    } else if (['near_expiry', 'soon', 'upcoming', 'preparing', 'partial', 'low_stock', 'warning', 'open_payment'].includes(s)) {
       effectiveTone = 'amber';
     } else if (['urgent', 'expired', 'cancelled', 'out_of_stock', 'unpaid', 'danger', 'damage'].includes(s)) {
       effectiveTone = 'red';
-    } else if (['pending', 'dispatched', 'confirmed', 'production', 'info'].includes(s)) {
+    } else if (['pending', 'dispatched', 'confirmed', 'ready', 'production', 'info'].includes(s)) {
       effectiveTone = 'blue';
     } else {
       effectiveTone = 'gray';

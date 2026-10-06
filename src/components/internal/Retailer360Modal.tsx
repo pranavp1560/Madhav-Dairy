@@ -22,14 +22,12 @@ import {
 interface Retailer360ModalProps {
   retailerId: string | null;
   onClose: () => void;
-  onOpenCreateInvoice?: () => void;
   onOpenRecordPayment?: () => void;
 }
 
 export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
   retailerId,
   onClose,
-  onOpenCreateInvoice,
   onOpenRecordPayment,
 }) => {
   const {
@@ -150,17 +148,7 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
                 </div>
 
                 <div className="pt-3 border-t border-slate-200 flex gap-2">
-                  {onOpenCreateInvoice && (
-                    <button
-                      onClick={() => {
-                        onClose();
-                        onOpenCreateInvoice();
-                      }}
-                      className="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg text-center shadow-sm transition-colors"
-                    >
-                      + Bill Invoice
-                    </button>
-                  )}
+
                   {onOpenRecordPayment && (
                     <button
                       onClick={() => {

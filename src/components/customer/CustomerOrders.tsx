@@ -85,7 +85,7 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onNavigate }) =>
 
         {/* Status Filter Chips (Min 44px Touch Targets) */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-none">
-          {['all', 'confirmed', 'dispatched', 'delivered'].map(st => (
+          {['all', 'pending', 'confirmed', 'dispatched'].map(st => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -128,7 +128,7 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onNavigate }) =>
               {/* Order Header: Order No, Date, Status */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex items-center gap-2.5 flex-wrap">
                     <span className="text-base sm:text-lg font-bold text-slate-900 font-mono-numbers">
                       {order.orderNumber}
                     </span>
@@ -137,6 +137,11 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onNavigate }) =>
                       label={statusMap[order.status] || order.status}
                       size="sm"
                     />
+                    {order.invoiceNumber && (
+                      <span className="text-xs font-mono-numbers font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        {order.invoiceNumber}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs sm:text-sm text-slate-500 font-mono-numbers">

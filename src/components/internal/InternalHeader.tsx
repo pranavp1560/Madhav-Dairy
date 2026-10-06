@@ -22,7 +22,6 @@ import {
 interface InternalHeaderProps {
   onToggleSidebar: () => void;
   onOpenCreateBatch: () => void;
-  onOpenCreateInvoice: () => void;
   onOpenRecordPayment: () => void;
   onOpenAddExpense: () => void;
 }
@@ -30,7 +29,6 @@ interface InternalHeaderProps {
 export const InternalHeader: React.FC<InternalHeaderProps> = ({
   onToggleSidebar,
   onOpenCreateBatch,
-  onOpenCreateInvoice,
   onOpenRecordPayment,
   onOpenAddExpense,
 }) => {
@@ -153,15 +151,6 @@ export const InternalHeader: React.FC<InternalHeaderProps> = ({
             </button>
           )}
 
-          {(internalRole === 'admin' || internalRole === 'accountant') && (
-            <button
-              onClick={onOpenCreateInvoice}
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>+ Invoice</span>
-            </button>
-          )}
 
           {/* Database Authenticated Role Badge (Non-clickable, coming from Supabase RBAC) */}
           <div className="hidden md:flex items-center">

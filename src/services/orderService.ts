@@ -20,6 +20,14 @@ export const orderService = {
         total_amount,
         payment_status,
         notes,
+        confirmed_at,
+        confirmed_by,
+        dispatched_at,
+        dispatched_by,
+        invoices(
+          id,
+          invoice_number
+        ),
         customers(
           id,
           business_name,
@@ -66,6 +74,8 @@ export const orderService = {
         };
       });
 
+      const inv = Array.isArray(o.invoices) ? o.invoices[0] : o.invoices;
+
       return {
         id: o.id,
         orderNumber: o.order_number.startsWith('#') ? o.order_number : `#${o.order_number}`,
@@ -80,6 +90,12 @@ export const orderService = {
         totalAmount: Number(o.total_amount),
         paymentStatus: o.payment_status as 'paid' | 'unpaid' | 'partial',
         notes: o.notes || undefined,
+        confirmedAt: o.confirmed_at || undefined,
+        confirmedBy: o.confirmed_by || undefined,
+        dispatchedAt: o.dispatched_at || undefined,
+        dispatchedBy: o.dispatched_by || undefined,
+        invoiceId: inv?.id || undefined,
+        invoiceNumber: inv?.invoice_number || undefined,
         items,
       };
     });
@@ -533,7 +549,50 @@ export const orderService = {
     };
   },
 
-  async updateOrderStatus(orderId: string, status: OrderStatus) {
+  async confirmOrder(orderId: string, userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_confirm_orders', {
+      p_order_ids: [orderId],
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async dispatchOrder(orderId: string, userId?: string) {
+    const { data, error } = await supabase.rpc('dispatch_order_and_create_invoice', {
+      p_order_id: orderId,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async bulkConfirmOrders(orderIds: string[], userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_confirm_orders', {
+      p_order_ids: orderIds,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async bulkDispatchOrders(orderIds: string[], userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_dispatch_orders', {
+      p_order_ids: orderIds,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async updateOrderStatus(orderId: string, status: OrderStatus, userId?: string) {
+    if (status === 'confirmed') {
+      return await this.confirmOrder(orderId, userId);
+    }
+    if (status === 'dispatched') {
+      return await this.dispatchOrder(orderId, userId);
+    }
+
     const { error } = await supabase
       .from('orders')
       .update({ status })

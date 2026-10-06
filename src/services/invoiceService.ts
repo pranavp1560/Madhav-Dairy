@@ -17,6 +17,13 @@ export const invoiceService = {
         tax_amount,
         total_amount,
         status,
+        delivered_at,
+        delivered_by,
+        settled_at,
+        settled_by,
+        orders(
+          order_number
+        ),
         customers(
           business_name,
           gstin,
@@ -73,13 +80,14 @@ export const invoiceService = {
       });
 
       const total = Number(inv.total_amount);
-      const paid = paidMap[inv.id] || (inv.status === 'paid' ? total : 0);
+      const paid = paidMap[inv.id] || (inv.status === 'settled' || inv.status === 'paid' ? total : 0);
       const outstanding = Math.max(0, total - paid);
 
       return {
         id: inv.id,
         invoiceNumber: inv.invoice_number,
         orderId: inv.order_id || undefined,
+        orderNumber: inv.orders?.order_number || undefined,
         retailerId: inv.customer_id,
         retailerName: inv.customers?.business_name || 'Retailer Customer',
         retailerGstin: inv.customers?.gstin || '27AABCM9124K1Z0',
@@ -93,7 +101,11 @@ export const invoiceService = {
         totalAmount: total,
         paidAmount: paid,
         outstandingAmount: outstanding,
-        status: inv.status as 'paid' | 'partial' | 'unpaid',
+        status: inv.status as any,
+        deliveredAt: inv.delivered_at || undefined,
+        deliveredBy: inv.delivered_by || undefined,
+        settledAt: inv.settled_at || undefined,
+        settledBy: inv.settled_by || undefined,
       };
     });
   },
@@ -145,7 +157,7 @@ export const invoiceService = {
         discount_amount: discountAmount,
         tax_amount: taxAmount,
         total_amount: totalAmount,
-        status: 'unpaid',
+        status: 'ready',
       })
       .select('*, customers(business_name, gstin, address)')
       .single();
@@ -230,7 +242,65 @@ export const invoiceService = {
       totalAmount,
       paidAmount: 0,
       outstandingAmount: totalAmount,
-      status: 'unpaid',
+      status: 'ready',
     };
+  },
+
+  async markDelivered(invoiceId: string, userId?: string) {
+    const { data, error } = await supabase.rpc('mark_invoice_delivered', {
+      p_invoice_id: invoiceId,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async bulkDeliver(invoiceIds: string[], userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_deliver_invoices', {
+      p_invoice_ids: invoiceIds,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async allocatePayment(params: {
+    invoiceId: string;
+    amount: number;
+    paymentMethod?: string;
+    reference?: string;
+    notes?: string;
+    userId?: string;
+    paymentDate?: string;
+  }) {
+    const { data, error } = await supabase.rpc('allocate_invoice_payment', {
+      p_invoice_id: params.invoiceId,
+      p_amount: params.amount,
+      p_payment_method: params.paymentMethod || 'cash',
+      p_reference: params.reference || null,
+      p_notes: params.notes || null,
+      p_user_id: params.userId || null,
+      p_payment_date: params.paymentDate || new Date().toISOString().split('T')[0],
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async confirmPayment(invoiceId: string, userId?: string) {
+    const { data, error } = await supabase.rpc('confirm_invoice_payment', {
+      p_invoice_id: invoiceId,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async bulkConfirmPayments(invoiceIds: string[], userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_confirm_invoice_payments', {
+      p_invoice_ids: invoiceIds,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
   }
 };

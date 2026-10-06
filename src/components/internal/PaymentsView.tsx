@@ -88,6 +88,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
                 <th className="p-3 text-right">Amount (₹)</th>
                 <th className="p-3">Payment Method</th>
                 <th className="p-3">Reference / UTR</th>
+                <th className="p-3">Accounting Status</th>
                 <th className="p-3">Recorded By</th>
               </tr>
             </thead>
@@ -107,6 +108,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
                     </span>
                   </td>
                   <td className="p-3 text-slate-500 text-[11px]">{p.reference}</td>
+                  <td className="p-3 font-sans">
+                    {p.isAccounted ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Accounted
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                        Allocated / Pending
+                      </span>
+                    )}
+                  </td>
                   <td className="p-3 font-sans text-slate-600">{p.recordedBy}</td>
                 </tr>
               ))}

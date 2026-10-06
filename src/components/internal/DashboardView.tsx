@@ -21,7 +21,6 @@ import {
 
 interface DashboardViewProps {
   onOpenCreateBatch: () => void;
-  onOpenCreateInvoice: () => void;
   onOpenRecordPayment: () => void;
   onOpenAddExpense: () => void;
   onSelectBatch: (id: string) => void;
@@ -30,7 +29,6 @@ interface DashboardViewProps {
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
   onOpenCreateBatch,
-  onOpenCreateInvoice,
   onOpenRecordPayment,
   onOpenAddExpense,
   onSelectBatch,
@@ -116,10 +114,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             <Button
               variant="secondary"
               size="sm"
-              icon={<Plus className="w-3.5 h-3.5" />}
-              onClick={onOpenCreateInvoice}
+              icon={<TrendingUp className="w-3.5 h-3.5" />}
+              onClick={() => setInternalView('invoices')}
             >
-              + New Invoice
+              Invoices
             </Button>
           )}
 

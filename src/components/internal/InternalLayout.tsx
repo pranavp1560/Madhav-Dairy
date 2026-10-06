@@ -28,7 +28,6 @@ import { SettingsView } from './SettingsView';
 // Modals
 import { CreateBatchModal } from './CreateBatchModal';
 import { BatchDetailModal } from './BatchDetailModal';
-import { CreateInvoiceModal } from './CreateInvoiceModal';
 import { InvoicePrintModal } from './InvoicePrintModal';
 import { Retailer360Modal } from './Retailer360Modal';
 import { RecordPaymentModal } from './RecordPaymentModal';
@@ -52,7 +51,6 @@ export const InternalLayout: React.FC = () => {
 
   // Modal visibility states
   const [isCreateBatchOpen, setIsCreateBatchOpen] = useState(false);
-  const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
   const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
 
@@ -62,7 +60,6 @@ export const InternalLayout: React.FC = () => {
         return (
           <DashboardView
             onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-            onOpenCreateInvoice={() => setIsCreateInvoiceOpen(true)}
             onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
             onOpenAddExpense={() => setIsAddExpenseOpen(true)}
             onSelectBatch={id => setSelectedBatchId(id)}
@@ -101,7 +98,6 @@ export const InternalLayout: React.FC = () => {
       case 'invoices':
         return (
           <InvoicesView
-            onOpenCreateInvoice={() => setIsCreateInvoiceOpen(true)}
             onOpenPrintInvoice={id => setSelectedInvoiceId(id)}
             onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
           />
@@ -157,7 +153,6 @@ export const InternalLayout: React.FC = () => {
         return (
           <DashboardView
             onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-            onOpenCreateInvoice={() => setIsCreateInvoiceOpen(true)}
             onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
             onOpenAddExpense={() => setIsAddExpenseOpen(true)}
             onSelectBatch={id => setSelectedBatchId(id)}
@@ -189,7 +184,6 @@ export const InternalLayout: React.FC = () => {
             }
           }}
           onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-          onOpenCreateInvoice={() => setIsCreateInvoiceOpen(true)}
           onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
           onOpenAddExpense={() => setIsAddExpenseOpen(true)}
         />
@@ -204,12 +198,6 @@ export const InternalLayout: React.FC = () => {
       <CreateBatchModal
         isOpen={isCreateBatchOpen}
         onClose={() => setIsCreateBatchOpen(false)}
-      />
-
-      <CreateInvoiceModal
-        isOpen={isCreateInvoiceOpen}
-        onClose={() => setIsCreateInvoiceOpen(false)}
-        onOpenPrintInvoice={id => setSelectedInvoiceId(id)}
       />
 
       <RecordPaymentModal
@@ -241,7 +229,6 @@ export const InternalLayout: React.FC = () => {
         <Retailer360Modal
           retailerId={selectedRetailerId}
           onClose={() => setSelectedRetailerId(null)}
-          onOpenCreateInvoice={() => setIsCreateInvoiceOpen(true)}
           onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
         />
       )}
