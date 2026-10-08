@@ -65,7 +65,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
 }) => {
-  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders } = useDairy();
+  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders, setSelectedRetailerId } = useDairy();
   const { t } = useTranslation();
 
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(
@@ -76,6 +76,9 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
   const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
 
   const navigateTo = (viewId: string) => {
+    if (viewId === 'ledger') {
+      setSelectedRetailerId('');
+    }
     setInternalView(viewId);
     onCloseMobile();
   };

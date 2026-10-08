@@ -148,7 +148,15 @@ export const InternalLayout: React.FC = () => {
           />
         );
       case 'ledger':
-        return <LedgerView />;
+        return (
+          <LedgerView
+            onOpenRecordPayment={customerId => handleOpenRecordPayment(customerId)}
+            onOpenCreateOrder={customerId => {
+              if (customerId) setSelectedRetailerId(customerId);
+              setInternalView('create_order');
+            }}
+          />
+        );
       case 'expenses':
         return (
           <ExpensesView
