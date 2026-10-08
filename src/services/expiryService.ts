@@ -8,8 +8,7 @@ import {
   BatchStatus
 } from '../types/dairy';
 import { calculateDaysRemaining } from '../utils/dateUtils';
-
-const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+import { getEffectiveOrgId } from './orgService';
 
 export const expiryService = {
   /**
@@ -82,11 +81,13 @@ export const expiryService = {
       throw new Error('Alert rules must strictly follow Alert 1 > Alert 2 > Alert 3 (e.g. 10 > 5 > 3).');
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const { error } = await supabase
       .from('expiry_rules')
       .upsert(
         {
-          organization_id: DEFAULT_ORG_ID,
+          organization_id: orgId,
           product_id: productId,
           title: `Custom Expiry Rule`,
           alert_1_days: alert1Days,
@@ -390,11 +391,23 @@ export const expiryService = {
         .limit(1)
         .maybeSingle();
 
-      recipientUserId = adminProf?.id || '00000000-0000-0000-0000-000000000001';
+      recipientUserId = adminProf?.id || null;
     }
 
+    if (!recipientUserId) {
+      const { data: { user } } = await supabase.auth.getUser();
+      recipientUserId = user?.id || null;
+    }
+
+    if (!recipientUserId) {
+      console.warn('Cannot send expiry notification: no valid authenticated recipient user found.');
+      return;
+    }
+
+    const orgId = await getEffectiveOrgId();
+
     const { error } = await supabase.from('notifications').insert({
-      organization_id: DEFAULT_ORG_ID,
+      organization_id: orgId,
       recipient_user_id: recipientUserId,
       customer_id: customerId || null,
       title,

@@ -7,6 +7,7 @@ import {
   InvoiceAllocationInput, 
   RecordCustomerPaymentResult 
 } from '../types/dairy';
+import { getEffectiveOrgId } from './orgService';
 
 export const paymentService = {
   async fetchPayments(): Promise<Payment[]> {
@@ -63,7 +64,7 @@ export const paymentService = {
     reference: string;
     notes?: string;
   }): Promise<Payment> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
+    const orgId = await getEffectiveOrgId();
     let payNum = `REC-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {

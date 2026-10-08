@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Invoice, InvoiceItem } from '../types/dairy';
+import { getEffectiveOrgId } from './orgService';
 
 export const invoiceService = {
   async fetchInvoices(): Promise<Invoice[]> {
@@ -121,7 +122,7 @@ export const invoiceService = {
       discount?: number;
     }[];
   }): Promise<Invoice> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
+    const orgId = await getEffectiveOrgId();
     let invNum = `INV-${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
@@ -189,17 +190,23 @@ export const invoiceService = {
     }
 
     // 3. Insert invoice items
-    const invItemsRows = params.items.map(it => ({
-      invoice_id: newInv.id,
-      product_sku_id: skuMap[it.productId] || '41000000-0000-0000-0000-000000000001',
-      batch_id: batchMap[it.batchNumber] || null,
-      quantity: it.quantity,
-      rate: it.rate,
-      discount_amount: it.discount || 0,
-      tax_percent: it.taxPercent,
-      tax_amount: it.quantity * it.rate * (it.taxPercent / 100),
-      line_total: it.quantity * it.rate,
-    }));
+    const invItemsRows = params.items.map(it => {
+      const skuId = skuMap[it.productId];
+      if (!skuId) {
+        throw new Error(`Cannot invoice item: No active SKU found for product ${it.productId}`);
+      }
+      return {
+        invoice_id: newInv.id,
+        product_sku_id: skuId,
+        batch_id: batchMap[it.batchNumber] || null,
+        quantity: it.quantity,
+        rate: it.rate,
+        discount_amount: it.discount || 0,
+        tax_percent: it.taxPercent,
+        tax_amount: it.quantity * it.rate * (it.taxPercent / 100),
+        line_total: it.quantity * it.rate,
+      };
+    });
 
     await supabase.from('invoice_items').insert(invItemsRows);
 

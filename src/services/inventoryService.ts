@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { Batch, BatchStatus, StockMovement, MovementType } from '../types/dairy';
 import { generateBatchNumber } from '../utils/batchNumber';
+import { getEffectiveOrgId } from './orgService';
 
 export { generateBatchNumber };
 
@@ -107,10 +108,25 @@ export const inventoryService = {
     expiryDate: string;
     notes?: string;
   }): Promise<Batch> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
-    const locId = '20000000-0000-0000-0000-000000000002'; // Pune Central Cold Storage
+    const orgId = await getEffectiveOrgId();
 
-    // Get default SKU
+    // Query active warehouse location for organization
+    const { data: loc } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('organization_id', orgId)
+      .limit(1)
+      .maybeSingle();
+
+    const locId = loc?.id;
+    if (!locId) {
+      throw new Error('No storage location configured for this organization');
+    }
+
+    // Get default SKU or first active SKU for product
+    let skuId: string | undefined;
+    let prodName = 'Dairy Product';
+
     const { data: sku } = await supabase
       .from('product_skus')
       .select('id, pack_size, unit, products(name)')
@@ -118,8 +134,23 @@ export const inventoryService = {
       .eq('is_default', true)
       .maybeSingle();
 
-    const skuId = sku?.id || '41000000-0000-0000-0000-000000000001';
-    const prodName = (sku as any)?.products?.name || 'Dairy Product';
+    if (sku?.id) {
+      skuId = sku.id;
+      prodName = (sku as any)?.products?.name || 'Dairy Product';
+    } else {
+      const { data: anySku } = await supabase
+        .from('product_skus')
+        .select('id, pack_size, unit, products(name)')
+        .eq('product_id', params.productId)
+        .limit(1)
+        .maybeSingle();
+      skuId = anySku?.id;
+      prodName = (anySku as any)?.products?.name || 'Dairy Product';
+    }
+
+    if (!skuId) {
+      throw new Error('No SKU found for product ' + params.productId);
+    }
 
     // Batch code formula: [MonthCode][DD][YYYY] (e.g. JA302026, March=MH, May=MY, June=JE, July=JY)
     const baseBatchNumber = generateBatchNumber(params.productionDate);

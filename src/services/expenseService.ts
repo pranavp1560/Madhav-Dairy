@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Expense, ExpenseCategory, PaymentMethod } from '../types/dairy';
+import { getEffectiveOrgId } from './orgService';
 
 export const expenseService = {
   async fetchExpenses(): Promise<Expense[]> {
@@ -40,7 +41,7 @@ export const expenseService = {
     paidTo: string;
     referenceNumber: string;
   }): Promise<Expense> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
+    const orgId = await getEffectiveOrgId();
 
     // Find category ID
     const { data: cat } = await supabase
@@ -50,7 +51,20 @@ export const expenseService = {
       .limit(1)
       .maybeSingle();
 
-    const catId = cat?.id || 'e0000000-0000-0000-0000-000000000001';
+    let catId = cat?.id;
+    if (!catId) {
+      const { data: anyCat } = await supabase
+        .from('expense_categories')
+        .select('id')
+        .limit(1)
+        .maybeSingle();
+      catId = anyCat?.id;
+    }
+
+    if (!catId) {
+      throw new Error('No expense category found in database');
+    }
+
     const expNum = `EXP-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const { data: newExp, error } = await supabase

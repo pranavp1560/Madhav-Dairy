@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { SalesChannel } from '../types/dairy';
-
-const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+import { getEffectiveOrgId } from './orgService';
 
 export const channelService = {
   async fetchSalesChannels(): Promise<SalesChannel[]> {
@@ -77,10 +76,12 @@ export const channelService = {
       throw new Error(`A channel named "${cleanName}" already exists.`);
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const { data: newChannel, error } = await supabase
       .from('sales_channels')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         name: cleanName,
         code: cleanCode,
         description: data.description?.trim() || null,

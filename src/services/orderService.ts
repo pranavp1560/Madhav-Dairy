@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Order, OrderItem, OrderStatus } from '../types/dairy';
-
-const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+import { getEffectiveOrgId } from './orgService';
 
 export const orderService = {
   async fetchOrders(): Promise<Order[]> {
@@ -188,20 +187,24 @@ export const orderService = {
 
     if (channelId) {
       // Lookup SKU channel prices
-      const { data: skuChannelPrices } = await supabase
-        .from('sku_channel_prices')
-        .select('sku_id, standard_price, minimum_price, is_active')
-        .eq('channel_id', channelId)
-        .eq('is_active', true)
-        .in('sku_id', itemSkuIds.length > 0 ? itemSkuIds : ['00000000-0000-0000-0000-000000000000']);
+      const skuChannelPrices = itemSkuIds.length > 0
+        ? (await supabase
+            .from('sku_channel_prices')
+            .select('sku_id, standard_price, minimum_price, is_active')
+            .eq('channel_id', channelId)
+            .eq('is_active', true)
+            .in('sku_id', itemSkuIds)).data
+        : null;
 
       // Lookup product channel prices fallback
-      const { data: prodChannelPrices } = await supabase
-        .from('product_channel_prices')
-        .select('product_id, standard_price, minimum_price, is_active')
-        .eq('channel_id', channelId)
-        .eq('is_active', true)
-        .in('product_id', itemProdIds.length > 0 ? itemProdIds : ['00000000-0000-0000-0000-000000000000']);
+      const prodChannelPrices = itemProdIds.length > 0
+        ? (await supabase
+            .from('product_channel_prices')
+            .select('product_id, standard_price, minimum_price, is_active')
+            .eq('channel_id', channelId)
+            .eq('is_active', true)
+            .in('product_id', itemProdIds)).data
+        : null;
 
       const priceMap: Record<string, { standard: number; minimum: number }> = {};
       if (prodChannelPrices) {
@@ -238,11 +241,13 @@ export const orderService = {
       }
     }
 
+    const orgId = await getEffectiveOrgId();
+
     // Generate atomic sequence number
     let orderNum = `MD-${Math.floor(1000 + Math.random() * 9000)}`;
     try {
       const { data: seqNum, error: rpcErr } = await supabase.rpc('next_document_number', {
-        p_org_id: DEFAULT_ORG_ID,
+        p_org_id: orgId,
         p_doc_type: 'order',
         p_prefix: 'MD-ORD',
         p_padding: 4
@@ -260,7 +265,7 @@ export const orderService = {
     const { data: newOrder, error: oErr } = await supabase
       .from('orders')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         customer_id: params.customerId,
         order_number: orderNum,
         order_date: new Date().toISOString().split('T')[0],
@@ -303,7 +308,7 @@ export const orderService = {
         finalSkuId = skuMap[i.productId]?.id;
       }
       if (!finalSkuId) {
-        finalSkuId = '1c1d1971-da7e-4669-889a-5eb33e62a53e'; // Fallback
+        throw new Error(`Cannot place order: Product ${i.productId || 'selected'} has no active SKU configured.`);
       }
 
       return {
@@ -412,20 +417,24 @@ export const orderService = {
 
     if (channelId) {
       // Lookup SKU channel prices
-      const { data: skuChannelPrices } = await supabase
-        .from('sku_channel_prices')
-        .select('sku_id, standard_price, minimum_price, is_active')
-        .eq('channel_id', channelId)
-        .eq('is_active', true)
-        .in('sku_id', itemSkuIds.length > 0 ? itemSkuIds : ['00000000-0000-0000-0000-000000000000']);
+      const skuChannelPrices = itemSkuIds.length > 0
+        ? (await supabase
+            .from('sku_channel_prices')
+            .select('sku_id, standard_price, minimum_price, is_active')
+            .eq('channel_id', channelId)
+            .eq('is_active', true)
+            .in('sku_id', itemSkuIds)).data
+        : null;
 
       // Lookup product channel prices fallback
-      const { data: prodChannelPrices } = await supabase
-        .from('product_channel_prices')
-        .select('product_id, standard_price, minimum_price, is_active')
-        .eq('channel_id', channelId)
-        .eq('is_active', true)
-        .in('product_id', itemProdIds.length > 0 ? itemProdIds : ['00000000-0000-0000-0000-000000000000']);
+      const prodChannelPrices = itemProdIds.length > 0
+        ? (await supabase
+            .from('product_channel_prices')
+            .select('product_id, standard_price, minimum_price, is_active')
+            .eq('channel_id', channelId)
+            .eq('is_active', true)
+            .in('product_id', itemProdIds)).data
+        : null;
 
       const priceMap: Record<string, { standard: number; minimum: number }> = {};
       if (prodChannelPrices) {
@@ -506,7 +515,7 @@ export const orderService = {
         finalSkuId = skuMap[i.productId]?.id;
       }
       if (!finalSkuId) {
-        finalSkuId = '1c1d1971-da7e-4669-889a-5eb33e62a53e'; // Fallback
+        throw new Error(`Cannot update order: Product ${i.productId || 'selected'} has no active SKU configured.`);
       }
 
       return {

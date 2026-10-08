@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Retailer } from '../types/dairy';
-
-const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+import { getEffectiveOrgId } from './orgService';
 
 export const customerService = {
   async fetchCustomers(): Promise<Retailer[]> {
@@ -68,14 +67,26 @@ export const customerService = {
         .eq('code', 'WHOLESALE')
         .maybeSingle();
 
-      channelId = defaultCh?.id || 'c1000000-0000-0000-0000-000000000002';
+      if (defaultCh?.id) {
+        channelId = defaultCh.id;
+      } else {
+        const { data: anyCh } = await supabase
+          .from('sales_channels')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        channelId = anyCh?.id;
+      }
     }
+
+    const orgId = await getEffectiveOrgId();
 
     // Generate sequential customer code via document sequences or count
     let customerCode = 'RET-1001';
     try {
       const { data: seqData, error: seqErr } = await supabase.rpc('next_document_number', {
-        p_org_id: DEFAULT_ORG_ID,
+        p_org_id: orgId,
         p_doc_type: 'customer',
         p_prefix: 'RET',
         p_padding: 4,
@@ -94,7 +105,7 @@ export const customerService = {
     const { data: newCust, error } = await supabase
       .from('customers')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         customer_code: customerCode,
         business_name: data.businessName.trim(),
         owner_name: data.ownerName.trim(),

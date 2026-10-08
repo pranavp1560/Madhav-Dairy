@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { RawMaterial, RawMaterialMovement, RawMaterialMovementType } from '../types/dairy';
+import { getEffectiveOrgId } from './orgService';
 
 export const rawMaterialService = {
   async fetchRawMaterials(): Promise<RawMaterial[]> {
@@ -94,8 +95,16 @@ export const rawMaterialService = {
   },
 
   async addRawMaterialStock(materialId: string, qty: number, reference: string, notes?: string) {
-    const orgId = '00000000-0000-0000-0000-000000000001';
-    const locId = '20000000-0000-0000-0000-000000000001';
+    const orgId = await getEffectiveOrgId();
+    const { data: loc } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('organization_id', orgId)
+      .limit(1)
+      .maybeSingle();
+
+    const locId = loc?.id;
+    if (!locId) throw new Error('No storage location found for organization');
 
     const { error } = await supabase.from('raw_material_transactions').insert({
       organization_id: orgId,
@@ -111,8 +120,16 @@ export const rawMaterialService = {
   },
 
   async recordRawMaterialUsage(materialId: string, qty: number, reference?: string, notes?: string): Promise<boolean> {
-    const orgId = '00000000-0000-0000-0000-000000000001';
-    const locId = '20000000-0000-0000-0000-000000000001';
+    const orgId = await getEffectiveOrgId();
+    const { data: loc } = await supabase
+      .from('locations')
+      .select('id')
+      .eq('organization_id', orgId)
+      .limit(1)
+      .maybeSingle();
+
+    const locId = loc?.id;
+    if (!locId) throw new Error('No storage location found for organization');
 
     const { error } = await supabase.from('raw_material_transactions').insert({
       organization_id: orgId,
@@ -126,5 +143,5 @@ export const rawMaterialService = {
 
     if (error) throw error;
     return true;
-  }
+  },
 };

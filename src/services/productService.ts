@@ -1,7 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { Product, ProductCategory, ProductSku, CategoryItem, ProductChannelPrice, SkuChannelPrice } from '../types/dairy';
-
-const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+import { getEffectiveOrgId } from './orgService';
 
 export const productService = {
   async fetchProducts(): Promise<Product[]> {
@@ -241,10 +240,12 @@ export const productService = {
       throw new Error(`Category "${cleanName}" already exists.`);
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const { data: newCat, error } = await supabase
       .from('product_categories')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         name: cleanName,
         name_mr: data.nameMr?.trim() || null,
         name_hi: data.nameHi?.trim() || null,
@@ -411,10 +412,12 @@ export const productService = {
       throw new Error(`Minimum Price (₹${min}) cannot be higher than Standard Price (₹${std})`);
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const { data: saved, error } = await supabase
       .from('product_channel_prices')
       .upsert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         product_id: data.productId,
         channel_id: data.channelId,
         standard_price: std,
@@ -476,8 +479,10 @@ export const productService = {
       }
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const rows = prices.map(p => ({
-      organization_id: DEFAULT_ORG_ID,
+      organization_id: orgId,
       product_id: p.productId,
       channel_id: p.channelId,
       standard_price: Number(p.standardPrice),
@@ -520,13 +525,26 @@ export const productService = {
         .select('id')
         .eq('name', data.categoryName || 'Fresh Milk & Curd')
         .maybeSingle();
-      categoryId = cat?.id || '30000000-0000-0000-0000-000000000002';
+
+      if (cat?.id) {
+        categoryId = cat.id;
+      } else {
+        const { data: anyCat } = await supabase
+          .from('product_categories')
+          .select('id')
+          .eq('is_active', true)
+          .limit(1)
+          .maybeSingle();
+        categoryId = anyCat?.id;
+      }
     }
+
+    const orgId = await getEffectiveOrgId();
 
     const { data: newProd, error: pErr } = await supabase
       .from('products')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         category_id: categoryId,
         name: data.name,
         name_mr: data.nameMr || null,
@@ -590,7 +608,7 @@ export const productService = {
         }
 
         return {
-          organization_id: DEFAULT_ORG_ID,
+          organization_id: orgId,
           product_id: newProd.id,
           channel_id: ch.id,
           standard_price: stdPrice,
@@ -672,10 +690,12 @@ export const productService = {
     const cleanName = data.name.trim();
     if (!cleanName) throw new Error('Product name is required');
 
+    const orgId = await getEffectiveOrgId();
+
     const { data: newProd, error: pErr } = await supabase
       .from('products')
       .insert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         category_id: data.categoryId,
         name: cleanName,
         description: data.description?.trim() || '',
@@ -845,6 +865,7 @@ export const productService = {
     const createdChannelPrices: SkuChannelPrice[] = [];
 
     if (channels && channels.length > 0) {
+      const orgId = await getEffectiveOrgId();
       const channelPricingRows = channels.map(ch => {
         const custom = data.channelPrices?.find(cp => cp.channelId === ch.id);
         let stdPrice = defaultSellingPrice;
@@ -866,7 +887,7 @@ export const productService = {
         }
 
         return {
-          organization_id: DEFAULT_ORG_ID,
+          organization_id: orgId,
           sku_id: newSku.id,
           channel_id: ch.id,
           standard_price: stdPrice,
@@ -1064,10 +1085,12 @@ export const productService = {
       throw new Error(`Minimum Price (₹${min}) cannot be higher than Standard Price (₹${std})`);
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const { data: saved, error } = await supabase
       .from('sku_channel_prices')
       .upsert({
-        organization_id: DEFAULT_ORG_ID,
+        organization_id: orgId,
         sku_id: data.skuId,
         channel_id: data.channelId,
         standard_price: std,
@@ -1138,8 +1161,10 @@ export const productService = {
       }
     }
 
+    const orgId = await getEffectiveOrgId();
+
     const rows = prices.map(p => ({
-      organization_id: DEFAULT_ORG_ID,
+      organization_id: orgId,
       sku_id: p.skuId,
       channel_id: p.channelId,
       standard_price: Number(p.standardPrice),
