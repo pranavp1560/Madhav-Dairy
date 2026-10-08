@@ -42,6 +42,7 @@ export const inventoryService = {
         id: b.id,
         batchNumber: b.batch_number,
         productId: prod?.id || b.product_sku_id,
+        skuId: b.product_sku_id,
         productName: prod?.name || 'Dairy Product',
         unit: b.product_skus?.pack_size ? `${b.product_skus.pack_size} ${b.product_skus.unit || 'pack'}` : 'pack',
         productionDate: b.production_date,

@@ -37,13 +37,14 @@ export const customerService = {
       area: c.area || '',
       gstin: c.gstin || '',
       creditLimit: Number(c.credit_limit || 0),
-      outstandingAmount: balanceMap[c.id] !== undefined ? balanceMap[c.id] : 0,
+      outstandingAmount: balanceMap[c.id] !== undefined ? Math.max(0, balanceMap[c.id]) : 0,
       paymentTerms: `Net ${c.payment_terms_days || 15} Days`,
       status: c.status === 'active' ? 'active' : 'inactive',
       lastOrderDate: c.last_order_at ? c.last_order_at.split('T')[0] : '',
       salesChannelId: c.sales_channel_id || undefined,
       salesChannelName: c.sales_channels?.name || 'Retail',
       salesChannelCode: c.sales_channels?.code || 'RETAIL',
+      customerCode: c.customer_code || '',
     }));
   },
 

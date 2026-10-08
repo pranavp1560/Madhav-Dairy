@@ -37,9 +37,15 @@ export const orderService = {
         order_items(
           id,
           product_sku_id,
+          batch_id,
           quantity,
           unit_price,
           line_total,
+          batches(
+            id,
+            batch_number,
+            expiry_date
+          ),
           product_skus(
             id,
             sku_code,
@@ -66,6 +72,9 @@ export const orderService = {
           skuId: sku?.id || it.product_sku_id,
           skuCode: sku?.sku_code,
           variantName: sku?.variant_name || sku?.pack_size,
+          batchId: it.batch_id || it.batches?.id || undefined,
+          batchNumber: it.batches?.batch_number || undefined,
+          expiryDate: it.batches?.expiry_date || undefined,
           productName: displayName,
           unit: sku?.pack_size || sku?.unit || 'pack',
           quantity: Number(it.quantity),
@@ -156,6 +165,7 @@ export const orderService = {
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName: string;
       quantity: number;
       unitPrice: number;
@@ -299,6 +309,7 @@ export const orderService = {
       return {
         order_id: newOrder.id,
         product_sku_id: finalSkuId,
+        batch_id: i.batchId || null,
         quantity: i.quantity,
         unit_price: i.unitPrice,
         discount_amount: 0,
@@ -362,6 +373,7 @@ export const orderService = {
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -500,6 +512,7 @@ export const orderService = {
       return {
         order_id: orderId,
         product_sku_id: finalSkuId,
+        batch_id: i.batchId || null,
         quantity: i.quantity,
         unit_price: i.unitPrice,
         discount_amount: 0,
@@ -591,6 +604,32 @@ export const orderService = {
     }
     if (status === 'dispatched') {
       return await this.dispatchOrder(orderId, userId);
+    }
+    if (status === 'delivered') {
+      const { data: inv } = await supabase
+        .from('invoices')
+        .select('id')
+        .eq('order_id', orderId)
+        .maybeSingle();
+
+      if (inv?.id) {
+        return await supabase.rpc('mark_invoice_delivered', {
+          p_invoice_id: inv.id,
+          p_user_id: userId || null,
+        });
+      }
+
+      const { error } = await supabase
+        .from('orders')
+        .update({
+          status: 'delivered',
+          delivered_at: new Date().toISOString(),
+          delivered_by: userId || null,
+        })
+        .eq('id', orderId);
+
+      if (error) throw error;
+      return;
     }
 
     const { error } = await supabase

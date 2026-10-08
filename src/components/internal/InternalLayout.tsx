@@ -25,12 +25,13 @@ import { SalesChannelsView } from './SalesChannelsView';
 import { ProductPricingView } from './ProductPricingView';
 import { SettingsView } from './SettingsView';
 
-// Modals
+// Modals & Full-Page Views
 import { CreateBatchModal } from './CreateBatchModal';
 import { BatchDetailModal } from './BatchDetailModal';
 import { InvoicePrintModal } from './InvoicePrintModal';
 import { Retailer360Modal } from './Retailer360Modal';
-import { RecordPaymentModal } from './RecordPaymentModal';
+import { RecordPaymentView } from './RecordPaymentView';
+import { CreateOrderView } from './CreateOrderView';
 import { AddExpenseModal } from './AddExpenseModal';
 
 export const InternalLayout: React.FC = () => {
@@ -43,16 +44,23 @@ export const InternalLayout: React.FC = () => {
     setSelectedRetailerId,
     selectedInvoiceId,
     setSelectedInvoiceId,
+    orderToEdit,
+    setOrderToEdit,
   } = useDairy();
 
   // Sidebar collapse & responsive drawer state
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
-  // Modal visibility states
+  // Modal visibility & full-page workflow states
   const [isCreateBatchOpen, setIsCreateBatchOpen] = useState(false);
-  const [isRecordPaymentOpen, setIsRecordPaymentOpen] = useState(false);
   const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [recordPaymentCustomerId, setRecordPaymentCustomerId] = useState<string | null>(null);
+
+  const handleOpenRecordPayment = (customerId?: string) => {
+    setRecordPaymentCustomerId(customerId || null);
+    setInternalView('record_payment');
+  };
 
   const renderActiveView = () => {
     switch (internalView) {
@@ -60,7 +68,7 @@ export const InternalLayout: React.FC = () => {
         return (
           <DashboardView
             onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-            onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
             onOpenAddExpense={() => setIsAddExpenseOpen(true)}
             onSelectBatch={id => setSelectedBatchId(id)}
             onSelectRetailer={id => setSelectedRetailerId(id)}
@@ -95,11 +103,22 @@ export const InternalLayout: React.FC = () => {
             onSelectRetailer={id => setSelectedRetailerId(id)}
           />
         );
+      case 'create_order':
+      case 'create-order':
+        return (
+          <CreateOrderView
+            orderToEdit={orderToEdit}
+            onBack={() => {
+              setOrderToEdit(null);
+              setInternalView('orders');
+            }}
+          />
+        );
       case 'invoices':
         return (
           <InvoicesView
             onOpenPrintInvoice={id => setSelectedInvoiceId(id)}
-            onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
           />
         );
       case 'customers':
@@ -107,13 +126,25 @@ export const InternalLayout: React.FC = () => {
         return (
           <RetailersView
             onSelectRetailer={id => setSelectedRetailerId(id)}
-            onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
           />
         );
       case 'payments':
         return (
           <PaymentsView
-            onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
+          />
+        );
+      case 'record_payment':
+      case 'record-payment':
+        return (
+          <RecordPaymentView
+            initialCustomerId={recordPaymentCustomerId || undefined}
+            onBack={() => setInternalView('payments')}
+            onNavigateToLedger={id => {
+              setSelectedRetailerId(id);
+              setInternalView('ledger');
+            }}
           />
         );
       case 'ledger':
@@ -153,7 +184,7 @@ export const InternalLayout: React.FC = () => {
         return (
           <DashboardView
             onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-            onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+            onOpenRecordPayment={() => handleOpenRecordPayment()}
             onOpenAddExpense={() => setIsAddExpenseOpen(true)}
             onSelectBatch={id => setSelectedBatchId(id)}
             onSelectRetailer={id => setSelectedRetailerId(id)}
@@ -184,7 +215,7 @@ export const InternalLayout: React.FC = () => {
             }
           }}
           onOpenCreateBatch={() => setIsCreateBatchOpen(true)}
-          onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+          onOpenRecordPayment={() => handleOpenRecordPayment()}
           onOpenAddExpense={() => setIsAddExpenseOpen(true)}
         />
 
@@ -198,11 +229,6 @@ export const InternalLayout: React.FC = () => {
       <CreateBatchModal
         isOpen={isCreateBatchOpen}
         onClose={() => setIsCreateBatchOpen(false)}
-      />
-
-      <RecordPaymentModal
-        isOpen={isRecordPaymentOpen}
-        onClose={() => setIsRecordPaymentOpen(false)}
       />
 
       <AddExpenseModal
@@ -229,7 +255,11 @@ export const InternalLayout: React.FC = () => {
         <Retailer360Modal
           retailerId={selectedRetailerId}
           onClose={() => setSelectedRetailerId(null)}
-          onOpenRecordPayment={() => setIsRecordPaymentOpen(true)}
+          onOpenRecordPayment={() => {
+            const rid = selectedRetailerId;
+            setSelectedRetailerId(null);
+            handleOpenRecordPayment(rid);
+          }}
         />
       )}
     </div>

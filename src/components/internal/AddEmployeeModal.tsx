@@ -4,7 +4,7 @@ import { userService } from '../../services/userService';
 import { Modal } from '../common/Modal';
 import { InternalRole } from '../../types/dairy';
 import { Button } from '../ui/Button';
-import { User, Mail, Phone, Building, Shield, Send } from 'lucide-react';
+import { User, Mail, Phone, Building, Shield, Send, KeyRound, Check } from 'lucide-react';
 
 interface AddEmployeeModalProps {
   isOpen: boolean;
@@ -24,7 +24,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
   const [mobile, setMobile] = useState('');
   const [department, setDepartment] = useState('Operations');
   const [role, setRole] = useState<InternalRole>('production_manager');
-  const [status, setStatus] = useState<'invited' | 'inactive'>('invited');
+  const [authMethod, setAuthMethod] = useState<'invite' | 'password'>('invite');
+  const [initialPassword, setInitialPassword] = useState('Madhav@1234');
+  const [status, setStatus] = useState<'active' | 'invited'>('invited');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -50,6 +52,11 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
       return;
     }
 
+    if (authMethod === 'password' && initialPassword.trim().length < 6) {
+      setErrorMsg('Password must be at least 6 characters long.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await userService.createEmployee({
@@ -58,13 +65,21 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
         mobile: cleanMobile,
         department: department.trim(),
         role,
-        status,
+        status: authMethod === 'password' ? 'active' : status,
+        password: authMethod === 'password' ? initialPassword.trim() : undefined,
       });
 
-      addToast(
-        `Employee created successfully. Invitation sent to: ${cleanEmail}. The employee must open the invitation email and create their password before logging in.`,
-        'success'
-      );
+      if (authMethod === 'password') {
+        addToast(
+          `Employee "${fullName.trim()}" created with active login access! Password: ${initialPassword}`,
+          'success'
+        );
+      } else {
+        addToast(
+          `Employee created successfully. Invitation dispatched to ${cleanEmail}.`,
+          'success'
+        );
+      }
 
       // Reset form
       setFullName('');
@@ -72,11 +87,13 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
       setMobile('');
       setDepartment('Operations');
       setRole('production_manager');
+      setAuthMethod('invite');
+      setInitialPassword('Madhav@1234');
       setStatus('invited');
       onSuccess();
       onClose();
     } catch (err: any) {
-      setErrorMsg(err.message || 'Failed to create employee and send invitation.');
+      setErrorMsg(err.message || 'Failed to create employee account.');
     } finally {
       setIsSubmitting(false);
     }
@@ -87,7 +104,7 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       title="Add New Employee"
-      subtitle="Invite a verified staff member with database role assignment and ERP permissions"
+      subtitle="Provision internal staff member with database role assignment and ERP permissions"
       maxWidth="lg"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
@@ -97,14 +114,57 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
           </div>
         )}
 
+        {/* Onboarding Mode Selection */}
+        <div className="flex p-1 bg-slate-100 rounded-xl border border-slate-200">
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMethod('invite');
+              setStatus('invited');
+            }}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+              authMethod === 'invite'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Mail className="w-3.5 h-3.5" />
+            <span>Send Email Invitation</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMethod('password');
+              setStatus('active');
+            }}
+            className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
+              authMethod === 'password'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>Set Direct Initial Password</span>
+          </button>
+        </div>
+
         {/* Security / Onboarding Notice */}
-        <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-3">
-          <Mail className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-          <div className="space-y-0.5">
-            <p className="font-semibold text-blue-900">Zero-Knowledge Secure Onboarding</p>
-            <p className="text-[11px] text-blue-700 leading-relaxed">
-              An invitation email will be sent to the employee. They will create their own password using the secure invitation link. Administrators never see or set employee passwords.
-            </p>
+        <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-3">
+          {authMethod === 'invite' ? (
+            <Mail className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          ) : (
+            <KeyRound className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-0.5 text-[11px] text-blue-800 leading-relaxed">
+            {authMethod === 'invite' ? (
+              <p>
+                An invitation email will be sent to the employee. They will securely choose their own password using the verification link.
+              </p>
+            ) : (
+              <p>
+                An active ERP account will be created immediately with the password specified below. The employee can log in right away.
+              </p>
+            )}
           </div>
         </div>
 
@@ -205,19 +265,39 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              Initial Account Status
-            </label>
-            <select
-              value={status}
-              onChange={e => setStatus(e.target.value as 'invited' | 'inactive')}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none cursor-pointer"
-            >
-              <option value="invited">Invited (Send invitation email now)</option>
-              <option value="inactive">Inactive / Onboarding Hold</option>
-            </select>
-          </div>
+          {authMethod === 'password' ? (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Initial Password <span className="text-red-500">*</span>
+              </label>
+              <div className="relative">
+                <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  required
+                  minLength={6}
+                  value={initialPassword}
+                  onChange={e => setInitialPassword(e.target.value)}
+                  placeholder="Min 6 characters"
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none font-mono"
+                />
+              </div>
+            </div>
+          ) : (
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Initial Account Status
+              </label>
+              <select
+                value={status}
+                onChange={e => setStatus(e.target.value as 'invited' | 'active')}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none cursor-pointer"
+              >
+                <option value="invited">Invited (Send invitation email now)</option>
+                <option value="active">Active (Pre-activated)</option>
+              </select>
+            </div>
+          )}
         </div>
 
         <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -229,9 +309,9 @@ export const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({
             variant="primary"
             size="md"
             isLoading={isSubmitting}
-            icon={<Send className="w-4 h-4" />}
+            icon={authMethod === 'invite' ? <Send className="w-4 h-4" /> : <Check className="w-4 h-4" />}
           >
-            Create Employee & Send Invite
+            {authMethod === 'invite' ? 'Create Employee & Send Invite' : 'Create Active Employee'}
           </Button>
         </div>
       </form>

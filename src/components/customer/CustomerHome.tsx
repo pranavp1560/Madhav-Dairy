@@ -43,8 +43,10 @@ export const CustomerHome: React.FC<CustomerHomeProps> = ({ onNavigate }) => {
 
   const latestOrder = customerOrders[0] || null;
 
-  // Unread customer alerts
-  const unreadAlerts = notifications.filter(n => n.recipientType === 'customer' && !n.read);
+  // Unread customer alerts isolated to current retailer
+  const unreadAlerts = notifications.filter(
+    n => n.recipientType === 'customer' && (!n.recipientId || (currentRetailer && n.recipientId === currentRetailer.id)) && !n.read
+  );
 
   const handleRepeatLastOrder = () => {
     if (!latestOrder) {

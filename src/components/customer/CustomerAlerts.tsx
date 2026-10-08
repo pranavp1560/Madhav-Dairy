@@ -17,12 +17,14 @@ interface CustomerAlertsProps {
 }
 
 export const CustomerAlerts: React.FC<CustomerAlertsProps> = ({ onNavigate }) => {
-  const { notifications, markNotificationRead, markAllNotificationsRead } = useDairy();
+  const { notifications, currentRetailer, markNotificationRead, markAllNotificationsRead } = useDairy();
   const { t } = useTranslation();
 
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
 
-  const customerNotifs = notifications.filter(n => n.recipientType === 'customer');
+  const customerNotifs = notifications.filter(
+    n => n.recipientType === 'customer' && (!n.recipientId || (currentRetailer && n.recipientId === currentRetailer.id))
+  );
   const unreadCount = customerNotifs.filter(n => !n.read).length;
 
   const filteredNotifs = customerNotifs.filter(n => {
@@ -104,6 +106,28 @@ export const CustomerAlerts: React.FC<CustomerAlertsProps> = ({ onNavigate }) =>
             {t.customer.alerts.unread} ({unreadCount})
           </button>
         </div>
+
+        {/* Freshness Radar Banner */}
+        {onNavigate && (
+          <div
+            onClick={() => onNavigate('expiry')}
+            className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-xl cursor-pointer hover:border-amber-300 transition-all flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center text-amber-800 shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-amber-950 block">Store Shelf Freshness Radar</span>
+                <span className="text-[11px] text-amber-800 block">Monitor delivered dairy batches & shelf-life countdowns</span>
+              </div>
+            </div>
+            <span className="text-xs font-bold text-amber-900 flex items-center gap-1 shrink-0">
+              <span>View Tracking</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Alerts List */}
@@ -127,7 +151,7 @@ export const CustomerAlerts: React.FC<CustomerAlertsProps> = ({ onNavigate }) =>
                 if (onNavigate) {
                   if (item.type === 'order') onNavigate('orders');
                   if (item.type === 'payment') onNavigate('payments');
-                  if (item.type === 'expiry') onNavigate('products');
+                  if (item.type === 'expiry') onNavigate('expiry');
                 }
               }}
               className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer ${

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { Modal } from '../common/Modal';
-import { Layers, Calendar, Package, Sparkles, Check, Hash } from 'lucide-react';
+import { Layers, Calendar, Package, Sparkles, Check, Hash, AlertCircle } from 'lucide-react';
 import { generateBatchNumber } from '../../utils/batchNumber';
+import { addShelfLifeDays, getTodayDateString, calculateDaysRemaining } from '../../utils/dateUtils';
 
 interface CreateBatchModalProps {
   isOpen: boolean;
@@ -10,37 +11,68 @@ interface CreateBatchModalProps {
 }
 
 export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onClose }) => {
-  const { products, createProductionBatch } = useDairy();
+  const { products, createProductionBatch, addToast } = useDairy();
 
   const [productId, setProductId] = useState<string>(products[0]?.id || '');
   const [producedQty, setProducedQty] = useState<number>(200);
-  const [productionDate, setProductionDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [productionDate, setProductionDate] = useState<string>(getTodayDateString());
   const [expiryDate, setExpiryDate] = useState<string>('');
+  const [isManualOverride, setIsManualOverride] = useState<boolean>(false);
   const [notes, setNotes] = useState<string>('');
+  const [validationError, setValidationError] = useState<string>('');
 
   const selectedProduct = products.find(p => p.id === productId) || products[0];
 
+  // Calendar-date calculation for default expiry
   useEffect(() => {
-    if (selectedProduct && productionDate) {
-      const prodTime = new Date(productionDate).getTime();
-      const expTime = prodTime + (selectedProduct.shelfLifeDays || 10) * 86400000;
-      const calcExp = new Date(expTime).toISOString().split('T')[0];
+    if (selectedProduct && productionDate && !isManualOverride) {
+      const calcExp = addShelfLifeDays(productionDate, selectedProduct.shelfLifeDays || 10);
       setExpiryDate(calcExp);
+      setValidationError('');
     }
-  }, [productId, productionDate, selectedProduct]);
+  }, [productId, productionDate, selectedProduct, isManualOverride]);
 
   const previewBatchNumber = generateBatchNumber(productionDate);
+
+  const handleExpiryChange = (newVal: string) => {
+    setExpiryDate(newVal);
+    setIsManualOverride(true);
+
+    if (newVal < productionDate) {
+      setValidationError('Expiry date cannot precede production date.');
+    } else {
+      setValidationError('');
+    }
+  };
+
+  const handleResetToStandard = () => {
+    if (selectedProduct && productionDate) {
+      const calcExp = addShelfLifeDays(productionDate, selectedProduct.shelfLifeDays || 10);
+      setExpiryDate(calcExp);
+      setIsManualOverride(false);
+      setValidationError('');
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!productId || producedQty <= 0) return;
+
+    if (expiryDate < productionDate) {
+      setValidationError('Expiry date cannot be earlier than production date.');
+      return;
+    }
+
+    const auditNotes = isManualOverride
+      ? `${notes ? `${notes} | ` : ''}[Quality Audit: Expiry manually adjusted to ${expiryDate}]`
+      : notes || `Batch created in Plant 1. Quality verified standard fat/SNF specs.`;
 
     createProductionBatch({
       productId,
       producedQty,
       productionDate,
       expiryDate,
-      notes: notes || `Batch created in Plant 1. Quality verified standard fat/SNF specs.`,
+      notes: auditNotes,
     });
 
     onClose();
@@ -67,7 +99,10 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
           ) : (
             <select
               value={productId}
-              onChange={e => setProductId(e.target.value)}
+              onChange={e => {
+                setProductId(e.target.value);
+                setIsManualOverride(false);
+              }}
               className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
               required
             >
@@ -106,7 +141,12 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
             <input
               type="date"
               value={productionDate}
-              onChange={e => setProductionDate(e.target.value)}
+              onChange={e => {
+                setProductionDate(e.target.value);
+                if (!isManualOverride && selectedProduct) {
+                  setExpiryDate(addShelfLifeDays(e.target.value, selectedProduct.shelfLifeDays || 10));
+                }
+              }}
               className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
               required
             />
@@ -117,19 +157,47 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="block font-bold text-slate-700">
-              Computed Expiry Date <span className="text-red-500">*</span>
+              Expiry Date <span className="text-red-500">*</span>
             </label>
-            <span className="text-[10px] text-blue-700 font-bold">
-              Calculated based on {selectedProduct?.shelfLifeDays}-day shelf life
-            </span>
+            <div className="flex items-center gap-2">
+              {isManualOverride ? (
+                <button
+                  type="button"
+                  onClick={handleResetToStandard}
+                  className="text-[10px] text-blue-600 font-bold hover:underline"
+                >
+                  Reset to {selectedProduct?.shelfLifeDays}-Day Standard
+                </button>
+              ) : (
+                <span className="text-[10px] text-emerald-700 font-bold">
+                  Standard {selectedProduct?.shelfLifeDays}-Day Shelf Life
+                </span>
+              )}
+            </div>
           </div>
           <input
             type="date"
             value={expiryDate}
-            onChange={e => setExpiryDate(e.target.value)}
-            className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none font-bold text-amber-900"
+            onChange={e => handleExpiryChange(e.target.value)}
+            className={`w-full px-3 py-2.5 bg-slate-50 border rounded-xl text-xs text-slate-900 focus:outline-none font-bold ${
+              validationError
+                ? 'border-red-500 focus:ring-2 focus:ring-red-100'
+                : isManualOverride
+                ? 'border-amber-400 bg-amber-50/30 text-amber-900 focus:border-amber-600 focus:ring-2 focus:ring-amber-100'
+                : 'border-slate-200 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 text-slate-900'
+            }`}
             required
           />
+          {validationError && (
+            <p className="text-[10px] text-red-600 font-semibold mt-1 flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> {validationError}
+            </p>
+          )}
+          {isManualOverride && !validationError && (
+            <p className="text-[10px] text-amber-700 font-medium mt-1">
+              Manual date override active ({calculateDaysRemaining(expiryDate, productionDate)} days shelf life). Will be recorded in batch audit logs.
+            </p>
+          )}
         </div>
 
         {/* Batch Notes */}
@@ -146,7 +214,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
           />
         </div>
 
-        {/* Prominent Live Batch Preview Card */}
+        {/* Live Batch Preview Card */}
         <div className="bg-gradient-to-br from-blue-50/70 via-white to-sky-50/30 p-4 rounded-2xl border-2 border-blue-200 shadow-xs space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-blue-900 bg-blue-100/80 px-2.5 py-0.5 rounded-md border border-blue-200 flex items-center gap-1">
@@ -169,7 +237,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
               <p className="text-[10px] text-slate-500">Traceability Timeline:</p>
               <p className="text-[11px] font-semibold text-slate-700">
                 Prod: <strong className="text-slate-900">{productionDate}</strong> &bull; Exp:{' '}
-                <strong className="text-amber-700">{expiryDate}</strong>
+                <strong className={isManualOverride ? 'text-amber-800' : 'text-slate-900'}>{expiryDate}</strong>
               </p>
             </div>
           </div>
@@ -186,7 +254,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
           </button>
           <button
             type="submit"
-            disabled={products.length === 0}
+            disabled={products.length === 0 || Boolean(validationError)}
             className="px-5 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl shadow-xs flex items-center gap-1.5"
           >
             <Check className="w-4 h-4" />

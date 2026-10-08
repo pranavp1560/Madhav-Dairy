@@ -8,6 +8,7 @@ import { CustomerCart } from './CustomerCart';
 import { CustomerOrders } from './CustomerOrders';
 import { CustomerPayments } from './CustomerPayments';
 import { CustomerAlerts } from './CustomerAlerts';
+import { CustomerExpiryAlerts } from './CustomerExpiryAlerts';
 import { CustomerProfile } from './CustomerProfile';
 import {
   Home,
@@ -35,7 +36,7 @@ export const CustomerLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('home');
 
   const unreadAlertsCount = notifications.filter(
-    n => n.recipientType === 'customer' && !n.read
+    n => n.recipientType === 'customer' && (!n.recipientId || (currentRetailer && n.recipientId === currentRetailer.id)) && !n.read
   ).length;
 
   const renderScreen = () => {
@@ -52,6 +53,8 @@ export const CustomerLayout: React.FC = () => {
         return <CustomerPayments onNavigate={tab => setActiveTab(tab)} />;
       case 'alerts':
         return <CustomerAlerts onNavigate={tab => setActiveTab(tab)} />;
+      case 'expiry':
+        return <CustomerExpiryAlerts onNavigate={tab => setActiveTab(tab)} />;
       case 'profile':
         return <CustomerProfile />;
       default:

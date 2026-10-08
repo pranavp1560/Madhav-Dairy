@@ -8,7 +8,6 @@ import {
   ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, 
   Truck, Plus, Pencil, CheckCircle2, FileText, CheckSquare, Square, AlertCircle, Clock
 } from 'lucide-react';
-import { OrderFormModal } from './OrderFormModal';
 
 interface OrdersViewProps {
   onSelectRetailer: (id: string) => void;
@@ -24,28 +23,25 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     bulkConfirmOrders, 
     bulkDispatchOrders,
     setInternalView,
-    setSelectedInvoiceId
+    setSelectedInvoiceId,
+    navigateToCreateOrder,
   } = useDairy();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRetailer, setSelectedRetailer] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
-  const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
-  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
 
   // Bulk selection state
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
 
   const handleOpenCreateOrder = () => {
-    setOrderToEdit(null);
-    setIsOrderModalOpen(true);
+    navigateToCreateOrder(null);
   };
 
   const handleOpenEditOrder = (order: Order) => {
-    setOrderToEdit(order);
-    setIsOrderModalOpen(true);
+    navigateToCreateOrder(order);
   };
 
   const filteredOrders = orders.filter(o => {
@@ -565,16 +561,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
           </div>
         )}
       </Drawer>
-
-      {/* Order Form Modal (Create and Edit Orders) */}
-      <OrderFormModal
-        isOpen={isOrderModalOpen}
-        onClose={() => {
-          setIsOrderModalOpen(false);
-          setOrderToEdit(null);
-        }}
-        orderToEdit={orderToEdit}
-      />
     </div>
   );
 };

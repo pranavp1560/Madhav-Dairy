@@ -126,6 +126,7 @@ export interface Batch {
   id: string;
   batchNumber: string; // e.g. "A1092026"
   productId: string;
+  skuId?: string;
   productName: string;
   unit: string;
   productionDate: string; // YYYY-MM-DD
@@ -158,9 +159,10 @@ export interface Retailer {
   salesChannelId?: string;
   salesChannelName?: string;
   salesChannelCode?: string;
+  customerCode?: string;
 }
 
-export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'cancelled';
+export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'delivered' | 'cancelled';
 
 export interface OrderItem {
   productId: string;
@@ -168,7 +170,9 @@ export interface OrderItem {
   skuId?: string;
   skuCode?: string;
   variantName?: string;
+  batchId?: string;
   batchNumber?: string;
+  expiryDate?: string;
   unit: string;
   quantity: number;
   unitPrice: number;
@@ -255,6 +259,53 @@ export interface Payment {
   isAccounted?: boolean;
   accountedAt?: string;
   accountedBy?: string;
+}
+
+export interface CustomerOutstandingSummary {
+  customer_id: string;
+  business_name: string;
+  customer_code?: string;
+  mobile?: string;
+  credit_limit: number;
+  total_outstanding: number;
+  outstanding_invoice_count: number;
+}
+
+export interface CustomerOutstandingInvoice {
+  id: string;
+  invoice_number: string;
+  invoice_date: string;
+  due_date?: string;
+  status: InvoiceStatus;
+  total_amount: number;
+  already_paid: number;
+  outstanding_amount: number;
+}
+
+export interface InvoiceAllocationInput {
+  invoice_id: string;
+  amount: number;
+}
+
+export interface RecordCustomerPaymentResult {
+  success: boolean;
+  payment_id: string;
+  payment_number: string;
+  payment_amount: number;
+  payment_method: PaymentMethod;
+  reference_number: string;
+  payment_date: string;
+  customer_id: string;
+  customer_name: string;
+  status: string;
+  allocations: {
+    invoice_id: string;
+    invoice_number: string;
+    allocated_amount: number;
+    remaining_balance: number;
+  }[];
+  remaining_customer_outstanding: number;
+  notes?: string;
 }
 
 export interface LedgerEntry {
@@ -377,20 +428,73 @@ export interface RolePermission {
 
 export type ExpirySeverity = 'urgent' | 'soon' | 'upcoming' | 'expired';
 
+export interface ProductExpiryRule {
+  id: string;
+  productId: string;
+  productName: string;
+  shelfLifeDays: number;
+  alert1Days: number;
+  alert2Days: number;
+  alert3Days: number;
+  enabled: boolean;
+  updatedAt?: string;
+}
+
+export interface CustomerProductBatch {
+  id: string;
+  customerId: string;
+  customerName?: string;
+  productId: string;
+  productName: string;
+  batchId: string;
+  batchNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  invoiceId?: string;
+  invoiceNumber?: string;
+  quantityPurchased: number;
+  quantityRemaining: number;
+  deliveredAt: string;
+  expiryDate: string;
+  daysRemaining: number;
+  isCurrent: boolean;
+  trackingStatus: 'active' | 'superseded' | 'completed' | 'expired';
+}
+
+export interface StaffStockExpiryItem {
+  batchId: string;
+  batchNumber: string;
+  productId: string;
+  productName: string;
+  locationId?: string;
+  locationName: string;
+  availableQty: number;
+  productionDate: string;
+  expiryDate: string;
+  daysRemaining: number;
+  alertLevel: 'urgent' | 'warning' | 'upcoming' | 'expiring_today' | 'expired' | 'active';
+  status: BatchStatus;
+}
+
 export interface ExpiryAlertItem {
   id: string;
+  batchId?: string;
   batchNumber: string;
   productId: string;
   productName: string;
   retailerId?: string;
   retailerName?: string;
-  location: 'warehouse' | 'retailer';
+  location: string;
   quantity: number;
   productionDate: string;
   expiryDate: string;
   daysRemaining: number;
   severity: ExpirySeverity;
-  alertStatus: 'active' | 'acknowledged' | 'resolved';
+  alertType?: 'staff' | 'customer';
+  thresholdDays?: number;
+  alertStatus: 'active' | 'acknowledged' | 'resolved' | 'superseded' | 'expired';
+  notificationId?: string;
+  generatedAt?: string;
 }
 
 export interface NotificationItem {
@@ -401,10 +505,12 @@ export interface NotificationItem {
   recipientId?: string; // retailerId if customer
   title: string;
   message: string;
-  type: 'expiry' | 'order' | 'product' | 'payment';
+  type: 'expiry' | 'order' | 'product' | 'payment' | 'system';
   channel: 'in_app' | 'push' | 'whatsapp' | 'sms';
   read: boolean;
   actionUrl?: string;
+  referenceType?: string;
+  referenceId?: string;
 }
 
 export interface ExpiryRule {
@@ -415,4 +521,9 @@ export interface ExpiryRule {
   target: 'customer' | 'internal' | 'both';
   channels: ('in_app' | 'push' | 'whatsapp' | 'sms')[];
   enabled: boolean;
+  productId?: string;
+  alert1Days?: number;
+  alert2Days?: number;
+  alert3Days?: number;
 }
+

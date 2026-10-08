@@ -272,7 +272,9 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
                 }
 
                 // Normal top-level item
-                const isActive = internalView === item.id;
+                const isActive = internalView === item.id || 
+                  (item.id === 'payments' && internalView === 'record_payment') ||
+                  (item.id === 'orders' && (internalView === 'create_order' || internalView === 'create-order'));
                 return (
                   <button
                     key={item.id}

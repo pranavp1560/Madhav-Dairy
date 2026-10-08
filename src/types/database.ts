@@ -261,6 +261,80 @@ export interface Database {
           updated_at: string;
         };
       };
+      expiry_rules: {
+        Row: {
+          id: string;
+          organization_id: string;
+          product_id: string | null;
+          title: string | null;
+          alert_1_days: number | null;
+          alert_2_days: number | null;
+          alert_3_days: number | null;
+          days_before_expiry: number | null;
+          severity: string | null;
+          target_customer: boolean;
+          target_internal: boolean;
+          enabled: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      expiry_alerts: {
+        Row: {
+          id: string;
+          organization_id: string;
+          batch_id: string;
+          product_id: string | null;
+          location_id: string | null;
+          customer_id: string | null;
+          customer_product_batch_id: string | null;
+          quantity: number;
+          remaining_quantity: number;
+          threshold_days: number | null;
+          expiry_date: string | null;
+          severity: 'urgent' | 'soon' | 'upcoming' | 'expired';
+          status: 'active' | 'acknowledged' | 'resolved' | 'superseded' | 'expired';
+          alert_type: 'staff' | 'customer';
+          notification_id: string | null;
+          generated_at: string;
+          updated_at: string;
+        };
+      };
+      customer_product_batches: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_id: string;
+          product_id: string;
+          batch_id: string;
+          order_id: string | null;
+          invoice_id: string | null;
+          quantity_purchased: number;
+          quantity_remaining: number;
+          delivered_at: string;
+          expiry_date: string;
+          is_current: boolean;
+          tracking_status: 'active' | 'superseded' | 'completed' | 'expired';
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      notifications: {
+        Row: {
+          id: string;
+          organization_id: string;
+          recipient_user_id: string;
+          customer_id: string | null;
+          title: string;
+          message: string;
+          type: 'expiry' | 'order' | 'product' | 'payment' | 'system';
+          channel: 'in_app' | 'push' | 'whatsapp' | 'sms';
+          reference_type: string | null;
+          reference_id: string | null;
+          read_at: string | null;
+          created_at: string;
+        };
+      };
     };
     Views: {
       view_customer_outstanding: {

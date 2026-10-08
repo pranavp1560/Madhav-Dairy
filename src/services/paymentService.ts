@@ -1,5 +1,12 @@
 import { supabase } from '../lib/supabase';
-import { Payment, PaymentMethod } from '../types/dairy';
+import { 
+  Payment, 
+  PaymentMethod, 
+  CustomerOutstandingSummary, 
+  CustomerOutstandingInvoice, 
+  InvoiceAllocationInput, 
+  RecordCustomerPaymentResult 
+} from '../types/dairy';
 
 export const paymentService = {
   async fetchPayments(): Promise<Payment[]> {
@@ -161,5 +168,64 @@ export const paymentService = {
       recordedBy: 'Finance Desk',
       isAccounted: false,
     };
-  }
+  },
+
+  async getCustomerOutstandingSummary(customerId: string): Promise<CustomerOutstandingSummary | null> {
+    const { data, error } = await supabase.rpc('get_customer_outstanding_summary', {
+      p_customer_id: customerId,
+    });
+    if (error) throw error;
+    if (!data) return null;
+    return {
+      customer_id: data.customer_id,
+      business_name: data.business_name,
+      customer_code: data.customer_code,
+      mobile: data.mobile,
+      credit_limit: Number(data.credit_limit || 0),
+      total_outstanding: Number(data.total_outstanding || 0),
+      outstanding_invoice_count: Number(data.outstanding_invoice_count || 0),
+    };
+  },
+
+  async getCustomerOutstandingInvoices(customerId: string): Promise<CustomerOutstandingInvoice[]> {
+    const { data, error } = await supabase.rpc('get_customer_outstanding_invoices', {
+      p_customer_id: customerId,
+    });
+    if (error) throw error;
+    return (data || []).map((inv: any): CustomerOutstandingInvoice => ({
+      id: inv.id || inv.invoice_id,
+      invoice_number: inv.invoice_number,
+      invoice_date: inv.invoice_date,
+      due_date: inv.due_date,
+      status: inv.status,
+      total_amount: Number(inv.total_amount || 0),
+      already_paid: Number(inv.already_paid ?? inv.allocated_amount ?? 0),
+      outstanding_amount: Number(inv.outstanding_amount || 0),
+    }));
+  },
+
+  async recordCustomerPaymentWithAllocations(params: {
+    customerId: string;
+    paymentAmount: number;
+    paymentMethod: PaymentMethod;
+    allocations: InvoiceAllocationInput[];
+    referenceNumber: string;
+    notes?: string;
+    paymentDate?: string;
+    userId?: string;
+  }): Promise<RecordCustomerPaymentResult> {
+    const { data, error } = await supabase.rpc('record_customer_payment_with_allocations', {
+      p_customer_id: params.customerId,
+      p_payment_amount: params.paymentAmount,
+      p_payment_method: params.paymentMethod,
+      p_allocations: params.allocations,
+      p_reference_number: params.referenceNumber,
+      p_notes: params.notes || null,
+      p_payment_date: params.paymentDate || new Date().toISOString().split('T')[0],
+      p_user_id: params.userId || null,
+    });
+
+    if (error) throw error;
+    return data as RecordCustomerPaymentResult;
+  },
 };

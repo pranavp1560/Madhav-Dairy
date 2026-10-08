@@ -15,18 +15,26 @@ export const notificationService = {
 
     return (notifs || []).map((n: any): NotificationItem => {
       const d = new Date(n.created_at);
-      const isToday = new Date().toDateString() === d.toDateString();
+      const now = new Date();
+      const isToday = now.toDateString() === d.toDateString();
+
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const isYesterday = yesterday.toDateString() === d.toDateString();
 
       return {
         id: n.id,
         date: d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }),
-        timeGroup: isToday ? 'today' : 'earlier',
-        recipientType: 'internal',
+        timeGroup: isToday ? 'today' : isYesterday ? 'yesterday' : 'earlier',
+        recipientType: n.customer_id ? 'customer' : 'internal',
+        recipientId: n.customer_id || undefined,
         title: n.title,
         message: n.message,
-        type: n.type as 'expiry' | 'order' | 'product' | 'payment',
-        channel: (n.channel || 'in_app') as 'in_app' | 'push' | 'whatsapp' | 'sms',
+        type: (n.type || 'system') as any,
+        channel: 'in_app', // Expiry and website notifications use in-app channel exclusively
         read: Boolean(n.read_at),
+        referenceType: n.reference_type || undefined,
+        referenceId: n.reference_id || undefined,
       };
     });
   },

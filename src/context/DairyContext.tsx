@@ -12,6 +12,9 @@ import {
   ExpiryAlertItem,
   NotificationItem,
   ExpiryRule,
+  ProductExpiryRule,
+  CustomerProductBatch,
+  StaffStockExpiryItem,
   InternalRole,
   OrderStatus,
   RawMaterial,
@@ -23,7 +26,9 @@ import {
   ProductChannelPrice,
   ProductSku,
   SkuChannelPrice,
-  PaymentMethod
+  PaymentMethod,
+  InvoiceAllocationInput,
+  RecordCustomerPaymentResult
 } from '../types/dairy';
 import {
   authService,
@@ -99,6 +104,9 @@ interface DairyContextType {
   expiryAlerts: ExpiryAlertItem[];
   notifications: NotificationItem[];
   expiryRules: ExpiryRule[];
+  productExpiryRules: ProductExpiryRule[];
+  staffStockExpiry: StaffStockExpiryItem[];
+  customerExpiryTracking: CustomerProductBatch[];
   rawMaterials: RawMaterial[];
   rawMaterialMovements: RawMaterialMovement[];
   users: User[];
@@ -252,6 +260,16 @@ interface DairyContextType {
     notes?: string;
   }) => Promise<Payment>;
 
+  recordCustomerPaymentWithAllocations: (data: {
+    customerId: string;
+    paymentAmount: number;
+    paymentMethod: PaymentMethod;
+    allocations: InvoiceAllocationInput[];
+    referenceNumber: string;
+    notes?: string;
+    paymentDate?: string;
+  }) => Promise<RecordCustomerPaymentResult>;
+
   addExpense: (data: {
     category: Expense['category'];
     description: string;
@@ -284,6 +302,9 @@ interface DairyContextType {
 
   updateUserStatus: (userId: string, status: 'active' | 'inactive' | 'invited') => Promise<void>;
   updateUserRole: (userId: string, role: InternalRole) => Promise<void>;
+  updateEmployee: (userId: string, data: { name: string; mobile: string; department: string; role: InternalRole; status: 'active' | 'inactive' | 'invited' }) => Promise<void>;
+  deleteEmployee: (userId: string) => Promise<void>;
+  saveRolePermissions: (role: InternalRole, permissions: Record<string, { view: boolean; create: boolean; edit: boolean; delete: boolean }>) => Promise<void>;
   registerRetailer: (data: {
     businessName: string;
     ownerName: string;
@@ -318,6 +339,7 @@ interface DairyContextType {
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -330,6 +352,7 @@ interface DairyContextType {
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -338,7 +361,29 @@ interface DairyContextType {
     deliveryDate?: string;
     status?: OrderStatus;
   }) => Promise<Order>;
+  orderToEdit: Order | null;
+  setOrderToEdit: (order: Order | null) => void;
+  navigateToCreateOrder: (order?: Order | null) => void;
   toggleExpiryRule: (ruleId: string) => Promise<void>;
+  updateProductExpiryRule: (params: {
+    productId: string;
+    alert1Days: number;
+    alert2Days: number;
+    alert3Days: number;
+    enabled: boolean;
+  }) => Promise<void>;
+  toggleProductExpiryRule: (productId: string) => Promise<void>;
+  evaluateExpiryRisk: () => Promise<void>;
+  sendManualWebsiteNotification: (params: {
+    batchId: string;
+    batchNumber: string;
+    productName: string;
+    daysRemaining: number;
+    locationName?: string;
+    customerId?: string;
+    retailerName?: string;
+  }) => Promise<void>;
+  refreshExpiryData: () => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: (recipientType: 'customer' | 'internal') => Promise<void>;
 
@@ -358,6 +403,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedRetailerId, setSelectedRetailerId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+
+  const navigateToCreateOrder = (order?: Order | null) => {
+    setOrderToEdit(order || null);
+    setInternalView('create_order');
+  };
 
   // Auth User & Profile
   const [currentUser, setCurrentUser] = useState<UserSessionProfile | null>(null);
@@ -379,6 +430,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [expiryAlerts, setExpiryAlerts] = useState<ExpiryAlertItem[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [expiryRules, setExpiryRules] = useState<ExpiryRule[]>([]);
+  const [productExpiryRules, setProductExpiryRules] = useState<ProductExpiryRule[]>([]);
+  const [staffStockExpiry, setStaffStockExpiry] = useState<StaffStockExpiryItem[]>([]);
+  const [customerExpiryTracking, setCustomerExpiryTracking] = useState<CustomerProductBatch[]>([]);
   const [rawMaterials, setRawMaterials] = useState<RawMaterial[]>([]);
   const [rawMaterialMovements, setRawMaterialMovements] = useState<RawMaterialMovement[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -469,7 +523,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setCurrentRetailer(custs[0]);
         }
 
-        const [ords, invs, pays, notifs, expAlerts, prices, skuPrs] = await Promise.all([
+        const [ords, invs, pays, notifs, expAlerts, prices, skuPrs, custTracking] = await Promise.all([
           orderService.fetchOrders(),
           invoiceService.fetchInvoices(),
           paymentService.fetchPayments(),
@@ -477,6 +531,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           expiryService.fetchExpiryAlerts(),
           productService.fetchChannelPrices(),
           productService.fetchSkuChannelPrices(),
+          expiryService.fetchCustomerExpiryTracking(profile.customerId || profile.customer?.id),
         ]);
 
         setOrders(ords);
@@ -486,6 +541,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setExpiryAlerts(expAlerts);
         setChannelPrices(prices);
         setSkuChannelPrices(skuPrs);
+        setCustomerExpiryTracking(custTracking);
 
       } else if (profile.userType === 'internal') {
         // Internal staff view: load full organization data permitted by RLS
@@ -500,7 +556,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           rms,
           rmMovs,
           exps,
-          expR,
+          prodExpRules,
+          staffExpItems,
+          custTracking,
           expA,
           notifs,
           usrs,
@@ -519,7 +577,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           rawMaterialService.fetchRawMaterials(),
           rawMaterialService.fetchRawMaterialMovements(),
           expenseService.fetchExpenses(),
-          expiryService.fetchExpiryRules(),
+          expiryService.fetchProductExpiryRules(),
+          expiryService.fetchStaffStockExpiry(),
+          expiryService.fetchCustomerExpiryTracking(),
           expiryService.fetchExpiryAlerts(),
           notificationService.fetchNotifications(),
           userService.fetchUsers(),
@@ -539,7 +599,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setRawMaterials(rms);
         setRawMaterialMovements(rmMovs);
         setExpenses(exps);
-        setExpiryRules(expR);
+        setProductExpiryRules(prodExpRules);
+        setStaffStockExpiry(staffExpItems);
+        setCustomerExpiryTracking(custTracking);
         setExpiryAlerts(expA);
         setNotifications(notifs);
         setUsers(usrs);
@@ -1005,6 +1067,42 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Record Customer Payment With Multi-Invoice Allocations
+  const recordCustomerPaymentWithAllocations = async (data: {
+    customerId: string;
+    paymentAmount: number;
+    paymentMethod: PaymentMethod;
+    allocations: InvoiceAllocationInput[];
+    referenceNumber: string;
+    notes?: string;
+    paymentDate?: string;
+  }): Promise<RecordCustomerPaymentResult> => {
+    try {
+      const result = await paymentService.recordCustomerPaymentWithAllocations({
+        ...data,
+        userId: currentUser?.id,
+      });
+
+      const [updatedInvs, updatedPays, updatedLedger, updatedRetailers] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        paymentService.fetchPayments(),
+        ledgerService.fetchLedger(),
+        customerService.fetchCustomers(),
+      ]);
+
+      setInvoices(updatedInvs);
+      setPayments(updatedPays);
+      setLedger(updatedLedger);
+      setRetailers(updatedRetailers);
+
+      addToast(`Payment ${result.payment_number} of ₹${data.paymentAmount.toLocaleString('en-IN')} recorded successfully!`, 'success');
+      return result;
+    } catch (err: any) {
+      addToast(`Error recording payment: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Add Expense
   const addExpense = async (data: {
     category: Expense['category'];
@@ -1107,6 +1205,63 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addToast(`Employee role updated to ${role}`, 'success');
     } catch (err: any) {
       addToast(`Failed to update role: ${err.message}`, 'error');
+    }
+  };
+
+  const updateEmployee = async (
+    userId: string,
+    data: {
+      name: string;
+      mobile: string;
+      department: string;
+      role: InternalRole;
+      status: 'active' | 'inactive' | 'invited';
+    }
+  ) => {
+    try {
+      await userService.updateEmployee(userId, data);
+      setUsers(prev =>
+        prev.map(u =>
+          u.id === userId
+            ? {
+                ...u,
+                name: data.name,
+                mobile: data.mobile,
+                department: data.department,
+                role: data.role,
+                status: data.status,
+              }
+            : u
+        )
+      );
+      addToast(`Employee "${data.name}" profile updated successfully!`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to update employee: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteEmployee = async (userId: string) => {
+    try {
+      await userService.deleteEmployee(userId);
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      addToast('Employee removed successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to delete employee: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const saveRolePermissions = async (
+    role: InternalRole,
+    permissions: Record<string, { view: boolean; create: boolean; edit: boolean; delete: boolean }>
+  ) => {
+    try {
+      await userService.saveRolePermissions(role, permissions);
+      addToast(`Role permissions for ${role.replace('_', ' ')} saved successfully!`, 'success');
+    } catch (err: any) {
+      addToast(`Failed to save role permissions: ${err.message}`, 'error');
+      throw err;
     }
   };
 
@@ -1517,7 +1672,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       await invoiceService.markDelivered(invoiceId, currentUser?.id);
       const updatedInvoices = await invoiceService.fetchInvoices();
       setInvoices(updatedInvoices);
-      addToast('Invoice marked as Delivered!', 'success');
+      await refreshExpiryData();
+      addToast('Invoice marked as Delivered & customer freshness tracking initialized!', 'success');
     } catch (err: any) {
       addToast(`Failed to deliver invoice: ${err.message}`, 'error');
       throw err;
@@ -1529,7 +1685,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const res = await invoiceService.bulkDeliver(invoiceIds, currentUser?.id);
       const updatedInvoices = await invoiceService.fetchInvoices();
       setInvoices(updatedInvoices);
-      addToast(`${res.delivered_count} invoice(s) marked as Delivered!`, 'success');
+      await refreshExpiryData();
+      addToast(`${res.delivered_count} invoice(s) marked as Delivered & customer freshness tracking initialized!`, 'success');
       return res;
     } catch (err: any) {
       addToast(`Failed to bulk deliver invoices: ${err.message}`, 'error');
@@ -1635,6 +1792,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -1648,6 +1806,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         items: params.items.map(i => ({
           productId: i.productId,
           skuId: i.skuId,
+          batchId: i.batchId,
           productName: i.productName || products.find(p => p.id === i.productId)?.name || 'Product',
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -1673,6 +1832,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     items: {
       productId?: string;
       skuId?: string;
+      batchId?: string;
       productName?: string;
       quantity: number;
       unitPrice: number;
@@ -1687,6 +1847,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         items: params.items.map(i => ({
           productId: i.productId,
           skuId: i.skuId,
+          batchId: i.batchId,
           productName: i.productName || products.find(p => p.id === i.productId)?.name || 'Product',
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -1704,12 +1865,90 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Expiry rule toggle
+  // Expiry methods
+  const refreshExpiryData = async () => {
+    try {
+      const [pRules, sExp, cTrack, alerts, notifs] = await Promise.all([
+        expiryService.fetchProductExpiryRules(),
+        expiryService.fetchStaffStockExpiry(),
+        expiryService.fetchCustomerExpiryTracking(currentRetailer?.id),
+        expiryService.fetchExpiryAlerts(),
+        notificationService.fetchNotifications(),
+      ]);
+      setProductExpiryRules(pRules);
+      setStaffStockExpiry(sExp);
+      setCustomerExpiryTracking(cTrack);
+      setExpiryAlerts(alerts);
+      setNotifications(notifs);
+    } catch (err: any) {
+      console.error('Error refreshing expiry data:', err);
+    }
+  };
+
+  const updateProductExpiryRule = async (params: {
+    productId: string;
+    alert1Days: number;
+    alert2Days: number;
+    alert3Days: number;
+    enabled: boolean;
+  }) => {
+    try {
+      await expiryService.updateProductExpiryRule(params);
+      await refreshExpiryData();
+      addToast('Product expiry alert rule updated successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update rule: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const toggleProductExpiryRule = async (productId: string) => {
+    const existing = productExpiryRules.find(p => p.productId === productId);
+    if (!existing) return;
+    try {
+      await expiryService.toggleProductExpiryRule(productId, existing.enabled);
+      setProductExpiryRules(prev => prev.map(p => p.productId === productId ? { ...p, enabled: !p.enabled } : p));
+      addToast(`Expiry alerts ${existing.enabled ? 'disabled' : 'enabled'} for ${existing.productName}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to toggle rule: ${err.message}`, 'error');
+    }
+  };
+
+  const evaluateExpiryRisk = async () => {
+    try {
+      await expiryService.evaluateExpiryRisk();
+      await refreshExpiryData();
+      addToast('Freshness surveillance scan complete. Live expiry radar updated.', 'success');
+    } catch (err: any) {
+      addToast(`Evaluation error: ${err.message}`, 'error');
+    }
+  };
+
+  const sendManualWebsiteNotification = async (params: {
+    batchId: string;
+    batchNumber: string;
+    productName: string;
+    daysRemaining: number;
+    locationName?: string;
+    customerId?: string;
+    retailerName?: string;
+  }) => {
+    try {
+      await expiryService.sendManualWebsiteNotification(params);
+      const notifs = await notificationService.fetchNotifications();
+      setNotifications(notifs);
+      addToast(`Website notification published for Batch ${params.batchNumber}`, 'success');
+    } catch (err: any) {
+      addToast(`Notification dispatch failed: ${err.message}`, 'error');
+    }
+  };
+
+  // Legacy Expiry rule toggle
   const toggleExpiryRule = async (ruleId: string) => {
     const r = expiryRules.find(x => x.id === ruleId);
     if (!r) return;
     try {
-      await expiryService.toggleExpiryRule(ruleId, r.enabled);
+      await expiryService.toggleProductExpiryRule(r.productId || ruleId, r.enabled);
       setExpiryRules(prev => prev.map(x => x.id === ruleId ? { ...x, enabled: !x.enabled } : x));
       addToast(`Expiry rule updated`, 'info');
     } catch (err: any) {
@@ -1769,6 +2008,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         expiryAlerts,
         notifications,
         expiryRules,
+        productExpiryRules,
+        staffStockExpiry,
+        customerExpiryTracking,
         rawMaterials,
         rawMaterialMovements,
         users,
@@ -1817,12 +2059,16 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         createProductionBatch,
         createInvoice,
         recordPayment,
+        recordCustomerPaymentWithAllocations,
         addExpense,
         addRawMaterialStock,
         addRawMaterialPurchase,
         recordRawMaterialUsage,
         updateUserStatus,
         updateUserRole,
+        updateEmployee,
+        deleteEmployee,
+        saveRolePermissions,
         registerRetailer,
         updateOrderStatus,
         confirmOrder,
@@ -1836,7 +2082,15 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         bulkConfirmInvoicePayments,
         createInternalOrder,
         editOrder,
+        orderToEdit,
+        setOrderToEdit,
+        navigateToCreateOrder,
         toggleExpiryRule,
+        updateProductExpiryRule,
+        toggleProductExpiryRule,
+        evaluateExpiryRisk,
+        sendManualWebsiteNotification,
+        refreshExpiryData,
         markNotificationRead,
         markAllNotificationsRead,
 
