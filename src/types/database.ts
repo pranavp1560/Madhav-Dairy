@@ -189,10 +189,16 @@ export interface Database {
           discount_amount: number;
           tax_amount: number;
           total_amount: number;
-          status: 'unpaid' | 'partial' | 'paid' | 'cancelled';
+          balance_amount: number | null;
+          status: 'ready' | 'delivered' | 'open_payment' | 'settled' | 'unpaid' | 'partial' | 'paid' | 'cancelled';
+          notes: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
+          delivered_at: string | null;
+          delivered_by: string | null;
+          settled_at: string | null;
+          settled_by: string | null;
         };
       };
       payments: {
