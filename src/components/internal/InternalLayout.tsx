@@ -23,6 +23,7 @@ import { ProductsAdminView } from './ProductsAdminView';
 import { ProductCategoriesView } from './ProductCategoriesView';
 import { SalesChannelsView } from './SalesChannelsView';
 import { ProductPricingView } from './ProductPricingView';
+import { PaymentDetailsView } from './PaymentDetailsView';
 import { SettingsView } from './SettingsView';
 
 // Modals & Full-Page Views
@@ -186,6 +187,11 @@ export const InternalLayout: React.FC = () => {
       case 'pricing':
       case 'product-pricing':
         return <ProductPricingView />;
+      case 'payment_details':
+      case 'payment-details':
+      case 'payment_settings':
+      case 'payment-settings':
+        return <PaymentDetailsView />;
       case 'settings':
         return <SettingsView />;
       default:

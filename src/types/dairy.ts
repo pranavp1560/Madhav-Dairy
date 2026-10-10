@@ -527,3 +527,54 @@ export interface ExpiryRule {
   alert3Days?: number;
 }
 
+export interface BusinessPaymentMethod {
+  id: string;
+  organizationId: string;
+  methodType: 'bank_account' | 'upi';
+  displayName: string;
+  accountHolderName?: string;
+  bankName?: string;
+  accountNumber?: string;
+  ifscCode?: string;
+  branchName?: string;
+  upiId?: string;
+  qrCodeUrl?: string;
+  instructions?: string;
+  isActive: boolean;
+  isDefault: boolean;
+  createdBy?: string;
+  updatedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type PaymentSubmissionStatus = 'open' | 'accounted' | 'rejected';
+
+export interface CustomerPaymentSubmission {
+  id: string;
+  organizationId: string;
+  customerId: string;
+  customerName?: string;
+  customerCode?: string;
+  invoiceId: string;
+  invoiceNumber?: string;
+  invoiceTotalAmount?: number;
+  paymentMethodId?: string;
+  paymentMethodType: 'upi' | 'bank_transfer' | 'other';
+  transactionReference: string;
+  amount: number;
+  transactionDate: string;
+  receiptUrl?: string;
+  notes?: string;
+  status: PaymentSubmissionStatus;
+  submittedAt: string;
+  verifiedBy?: string;
+  verifiedByName?: string;
+  verifiedAt?: string;
+  rejectionReason?: string;
+  accountedPaymentId?: string;
+  accountedPaymentNumber?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

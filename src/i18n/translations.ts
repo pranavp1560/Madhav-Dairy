@@ -205,6 +205,7 @@ export interface Translations {
       categories: string;
       channels: string;
       pricing: string;
+      paymentDetails: string;
       settings: string;
     };
     dashboard: {
@@ -443,6 +444,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         categories: 'Product Categories',
         channels: 'Sales Channels',
         pricing: 'Channel Pricing',
+        paymentDetails: 'Payment Details',
         settings: 'Settings',
       },
       dashboard: {
@@ -679,6 +681,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         categories: 'उत्पादन वर्ग',
         channels: 'विक्री चॅनल्स',
         pricing: 'चॅनलनुसार दर',
+        paymentDetails: 'पेमेंट तपशील',
         settings: 'सेटिंग्ज',
       },
       dashboard: {
@@ -915,6 +918,7 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         categories: 'उत्पाद श्रेणियां',
         channels: 'बिक्री चैनल',
         pricing: 'चैनल-वार मूल्य निर्धारण',
+        paymentDetails: 'भुगतान विवरण',
         settings: 'सेटिंग्स',
       },
       dashboard: {

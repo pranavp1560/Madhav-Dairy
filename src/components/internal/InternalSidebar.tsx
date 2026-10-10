@@ -23,6 +23,7 @@ import {
   Network,
   BadgePercent,
   Settings,
+  QrCode,
   ChevronDown,
   ChevronRight,
   ChevronLeft,
@@ -65,7 +66,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
 }) => {
-  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders, setSelectedRetailerId } = useDairy();
+  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders, paymentSubmissions, setSelectedRetailerId } = useDairy();
   const { t } = useTranslation();
 
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(
@@ -74,6 +75,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
 
   const urgentExpiryCount = expiryAlerts.filter(a => a.daysRemaining <= 5).length;
   const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+  const openSubmissionsCount = paymentSubmissions.filter(s => s.status === 'open').length;
 
   const navigateTo = (viewId: string) => {
     if (viewId === 'ledger') {
@@ -123,7 +125,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
     {
       title: t.internal.nav.finance,
       items: [
-        { id: 'payments', label: t.internal.nav.payments, icon: CreditCard },
+        { id: 'payments', label: t.internal.nav.payments, icon: CreditCard, badge: openSubmissionsCount > 0 ? openSubmissionsCount : undefined, badgeColor: 'bg-blue-600' },
         { id: 'ledger', label: t.internal.nav.customerLedger, icon: BookOpen },
         { id: 'expenses', label: t.internal.nav.expenses, icon: DollarSign },
       ],
@@ -150,6 +152,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
         { id: 'categories', label: t.internal.nav.categories, icon: Tags },
         { id: 'channels', label: t.internal.nav.channels, icon: Network },
         { id: 'pricing', label: t.internal.nav.pricing, icon: BadgePercent },
+        { id: 'payment_details', label: t.internal.nav.paymentDetails, icon: QrCode },
         { id: 'users', label: t.internal.nav.users, icon: UserCheck },
         { id: 'roles', label: t.internal.nav.rolesPermissions, icon: ShieldCheck },
         { id: 'settings', label: t.internal.nav.settings, icon: Settings },

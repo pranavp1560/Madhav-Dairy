@@ -253,6 +253,23 @@ export const CustomerOrders: React.FC<CustomerOrdersProps> = ({ onNavigate }) =>
                   </span>
                 </div>
               )}
+
+              {selectedOrder.invoiceNumber && (
+                <div className="col-span-2 pt-2.5 border-t border-slate-200 flex items-center justify-between text-sm">
+                  <span className="text-slate-600 font-semibold">
+                    Tax Invoice: <span className="font-mono-numbers font-bold text-blue-700">{selectedOrder.invoiceNumber}</span>
+                  </span>
+                  <button
+                    onClick={() => {
+                      setSelectedOrder(null);
+                      onNavigate('payments');
+                    }}
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                  >
+                    View & Pay Now →
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Items List */}

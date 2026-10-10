@@ -342,6 +342,51 @@ export interface Database {
           created_at: string;
         };
       };
+      business_payment_methods: {
+        Row: {
+          id: string;
+          organization_id: string;
+          method_type: 'bank_account' | 'upi';
+          display_name: string;
+          account_holder_name: string | null;
+          bank_name: string | null;
+          account_number: string | null;
+          ifsc_code: string | null;
+          branch_name: string | null;
+          upi_id: string | null;
+          qr_code_url: string | null;
+          instructions: string | null;
+          is_active: boolean;
+          is_default: boolean;
+          created_by: string | null;
+          updated_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      customer_payment_submissions: {
+        Row: {
+          id: string;
+          organization_id: string;
+          customer_id: string;
+          invoice_id: string;
+          payment_method_id: string | null;
+          payment_method_type: 'upi' | 'bank_transfer' | 'other';
+          transaction_reference: string;
+          amount: number;
+          transaction_date: string;
+          receipt_url: string | null;
+          notes: string | null;
+          status: 'open' | 'accounted' | 'rejected';
+          submitted_at: string;
+          verified_by: string | null;
+          verified_at: string | null;
+          rejection_reason: string | null;
+          accounted_payment_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
     };
     Views: {
       view_customer_outstanding: {

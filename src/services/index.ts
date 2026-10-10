@@ -12,3 +12,4 @@ export * from './expiryService';
 export * from './notificationService';
 export * from './userService';
 export * from './channelService';
+export * from './paymentMethodService';

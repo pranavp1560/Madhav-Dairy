@@ -28,7 +28,9 @@ import {
   SkuChannelPrice,
   PaymentMethod,
   InvoiceAllocationInput,
-  RecordCustomerPaymentResult
+  RecordCustomerPaymentResult,
+  BusinessPaymentMethod,
+  CustomerPaymentSubmission
 } from '../types/dairy';
 import {
   authService,
@@ -37,6 +39,7 @@ import {
   orderService,
   invoiceService,
   paymentService,
+  paymentMethodService,
   ledgerService,
   inventoryService,
   rawMaterialService,
@@ -115,6 +118,41 @@ interface DairyContextType {
   salesChannels: SalesChannel[];
   channelPrices: ProductChannelPrice[];
   skuChannelPrices: SkuChannelPrice[];
+
+  // Payment Details & Customer Verification Submissions
+  paymentMethods: BusinessPaymentMethod[];
+  paymentSubmissions: CustomerPaymentSubmission[];
+  loadPaymentMethods: () => Promise<void>;
+  loadPaymentSubmissions: () => Promise<void>;
+  createPaymentMethod: (method: {
+    methodType: 'bank_account' | 'upi';
+    displayName: string;
+    accountHolderName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    branchName?: string;
+    upiId?: string;
+    qrCodeUrl?: string;
+    instructions?: string;
+    isActive: boolean;
+    isDefault: boolean;
+  }) => Promise<BusinessPaymentMethod>;
+  updatePaymentMethod: (id: string, updates: Partial<BusinessPaymentMethod>) => Promise<void>;
+  togglePaymentMethodStatus: (id: string, isActive: boolean) => Promise<void>;
+  deletePaymentMethod: (id: string) => Promise<void>;
+  submitCustomerPayment: (params: {
+    invoiceId: string;
+    paymentMethodType: 'upi' | 'bank_transfer' | 'other';
+    transactionReference: string;
+    amount: number;
+    paymentMethodId?: string;
+    transactionDate?: string;
+    receiptUrl?: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; submission_id: string; message: string }>;
+  verifyAndAccountSubmission: (submissionId: string, notes?: string) => Promise<any>;
+  rejectPaymentSubmission: (submissionId: string, reason: string) => Promise<any>;
 
   // Cart
   cart: CartItem[];
@@ -441,6 +479,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [salesChannels, setSalesChannels] = useState<SalesChannel[]>([]);
   const [channelPrices, setChannelPrices] = useState<ProductChannelPrice[]>([]);
   const [skuChannelPrices, setSkuChannelPrices] = useState<SkuChannelPrice[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<BusinessPaymentMethod[]>([]);
+  const [paymentSubmissions, setPaymentSubmissions] = useState<CustomerPaymentSubmission[]>([]);
 
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -500,9 +540,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setExpiryAlerts([]);
         setNotifications([]);
         setUsers([]);
+        setUsers([]);
         setSalesChannels([]);
         setChannelPrices([]);
         setSkuChannelPrices([]);
+        setPaymentMethods([]);
+        setPaymentSubmissions([]);
         return;
       }
 
@@ -523,7 +566,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setCurrentRetailer(custs[0]);
         }
 
-        const [ords, invs, pays, notifs, expAlerts, prices, skuPrs, custTracking] = await Promise.all([
+        const [ords, invs, pays, notifs, expAlerts, prices, skuPrs, custTracking, pMethods, pSubs] = await Promise.all([
           orderService.fetchOrders(),
           invoiceService.fetchInvoices(),
           paymentService.fetchPayments(),
@@ -532,6 +575,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           productService.fetchChannelPrices(),
           productService.fetchSkuChannelPrices(),
           expiryService.fetchCustomerExpiryTracking(profile.customerId || profile.customer?.id),
+          paymentMethodService.fetchPaymentMethods(),
+          paymentMethodService.fetchPaymentSubmissions({ customerId: profile.customerId || profile.customer?.id }),
         ]);
 
         setOrders(ords);
@@ -542,6 +587,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setChannelPrices(prices);
         setSkuChannelPrices(skuPrs);
         setCustomerExpiryTracking(custTracking);
+        setPaymentMethods(pMethods);
+        setPaymentSubmissions(pSubs);
 
       } else if (profile.userType === 'internal') {
         // Internal staff view: load full organization data permitted by RLS
@@ -565,7 +612,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           rPerms,
           channels,
           prices,
-          skuPrs
+          skuPrs,
+          pMethods,
+          pSubs
         ] = await Promise.all([
           customerService.fetchCustomers(),
           orderService.fetchOrders(),
@@ -587,6 +636,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           channelService.fetchSalesChannels(),
           productService.fetchChannelPrices(),
           productService.fetchSkuChannelPrices(),
+          paymentMethodService.fetchPaymentMethods(),
+          paymentMethodService.fetchPaymentSubmissions(),
         ]);
 
         setRetailers(custs);
@@ -609,6 +660,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSalesChannels(channels);
         setChannelPrices(prices);
         setSkuChannelPrices(skuPrs);
+        setPaymentMethods(pMethods);
+        setPaymentSubmissions(pSubs);
       }
     } catch (err: any) {
       console.error('Data refresh error:', err);
@@ -1967,6 +2020,131 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setNotifications(prev => prev.map(n => n.recipientType === recipientType ? { ...n, read: true } : n));
   };
 
+  // Payment Details & Customer Verification Operations
+  const loadPaymentMethods = async () => {
+    try {
+      const methods = await paymentMethodService.fetchPaymentMethods();
+      setPaymentMethods(methods);
+    } catch (err: any) {
+      console.error('Failed to load payment methods:', err);
+    }
+  };
+
+  const loadPaymentSubmissions = async () => {
+    try {
+      const subs = await paymentMethodService.fetchPaymentSubmissions();
+      setPaymentSubmissions(subs);
+    } catch (err: any) {
+      console.error('Failed to load payment submissions:', err);
+    }
+  };
+
+  const createPaymentMethod = async (method: {
+    methodType: 'bank_account' | 'upi';
+    displayName: string;
+    accountHolderName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    ifscCode?: string;
+    branchName?: string;
+    upiId?: string;
+    qrCodeUrl?: string;
+    instructions?: string;
+    isActive: boolean;
+    isDefault: boolean;
+  }) => {
+    try {
+      const created = await paymentMethodService.createPaymentMethod(method);
+      await loadPaymentMethods();
+      addToast(`Payment method "${created.displayName}" created successfully`, 'success');
+      return created;
+    } catch (err: any) {
+      addToast(`Failed to create payment method: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updatePaymentMethod = async (id: string, updates: Partial<BusinessPaymentMethod>) => {
+    try {
+      await paymentMethodService.updatePaymentMethod(id, updates);
+      await loadPaymentMethods();
+      addToast('Payment method updated successfully', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update payment method: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const togglePaymentMethodStatus = async (id: string, isActive: boolean) => {
+    try {
+      await paymentMethodService.togglePaymentMethodStatus(id, isActive);
+      setPaymentMethods(prev => prev.map(m => m.id === id ? { ...m, isActive } : m));
+      addToast(`Payment method ${isActive ? 'activated' : 'deactivated'}`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deletePaymentMethod = async (id: string) => {
+    try {
+      await paymentMethodService.deletePaymentMethod(id);
+      setPaymentMethods(prev => prev.filter(m => m.id !== id));
+      addToast('Payment method removed', 'success');
+    } catch (err: any) {
+      addToast(`Failed to delete payment method: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const submitCustomerPayment = async (params: {
+    invoiceId: string;
+    paymentMethodType: 'upi' | 'bank_transfer' | 'other';
+    transactionReference: string;
+    amount: number;
+    paymentMethodId?: string;
+    transactionDate?: string;
+    receiptUrl?: string;
+    notes?: string;
+  }) => {
+    try {
+      const result = await paymentMethodService.submitCustomerPayment(params);
+      addToast(result.message || 'Payment submission received for verification!', 'success');
+      const subs = await paymentMethodService.fetchPaymentSubmissions({
+        customerId: currentRetailer?.id || currentUser?.customerId,
+      });
+      setPaymentSubmissions(subs);
+      return result;
+    } catch (err: any) {
+      addToast(`Payment submission failed: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const verifyAndAccountSubmission = async (submissionId: string, notes?: string) => {
+    try {
+      const result = await paymentMethodService.verifyAndAccountSubmission(submissionId, notes);
+      addToast(`Payment ${result.payment_number} verified and accounted successfully!`, 'success');
+      await refreshData();
+      return result;
+    } catch (err: any) {
+      addToast(`Verification failed: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const rejectPaymentSubmission = async (submissionId: string, reason: string) => {
+    try {
+      const result = await paymentMethodService.rejectSubmission(submissionId, reason);
+      addToast('Payment submission marked as rejected', 'info');
+      await loadPaymentSubmissions();
+      return result;
+    } catch (err: any) {
+      addToast(`Rejection failed: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   return (
     <DairyContext.Provider
       value={{
@@ -2093,6 +2271,19 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         refreshExpiryData,
         markNotificationRead,
         markAllNotificationsRead,
+
+        // Payment Details & Customer Verification Submissions
+        paymentMethods,
+        paymentSubmissions,
+        loadPaymentMethods,
+        loadPaymentSubmissions,
+        createPaymentMethod,
+        updatePaymentMethod,
+        togglePaymentMethodStatus,
+        deletePaymentMethod,
+        submitCustomerPayment,
+        verifyAndAccountSubmission,
+        rejectPaymentSubmission,
 
         toasts,
         addToast,
