@@ -17,6 +17,7 @@ export const inventoryService = {
         expiry_date,
         status,
         notes,
+        produced_quantity,
         product_skus(
           pack_size,
           unit,
@@ -32,12 +33,28 @@ export const inventoryService = {
 
     if (error) throw error;
 
+    // Fetch authoritative sold quantities across all invoiced line items for each batch
+    const { data: invoiceItems } = await supabase
+      .from('invoice_items')
+      .select('batch_id, quantity');
+
+    const soldMap: Record<string, number> = {};
+    if (invoiceItems) {
+      invoiceItems.forEach((it: any) => {
+        if (it.batch_id) {
+          soldMap[it.batch_id] = (soldMap[it.batch_id] || 0) + Number(it.quantity || 0);
+        }
+      });
+    }
+
     return (batchesData || []).map((b: any): Batch => {
       const prod = b.product_skus?.products;
       const stock = b.batch_stock?.[0];
       const onHand = Number(stock?.quantity_on_hand || 0);
       const reserved = Number(stock?.quantity_reserved || 0);
       const available = Math.max(0, onHand - reserved);
+      const sold = soldMap[b.id] || 0;
+      const produced = Number(b.produced_quantity || (onHand + sold));
 
       return {
         id: b.id,
@@ -48,12 +65,12 @@ export const inventoryService = {
         unit: b.product_skus?.pack_size ? `${b.product_skus.pack_size} ${b.product_skus.unit || 'pack'}` : 'pack',
         productionDate: b.production_date,
         expiryDate: b.expiry_date,
-        producedQty: onHand + 100, // Approximated historical total
-        soldQty: 100,
+        producedQty: produced,
+        soldQty: sold,
         returnedQty: 0,
         damagedQty: 0,
-        availableQty: available > 0 ? available : onHand,
-        status: b.status as BatchStatus,
+        availableQty: available,
+        status: (available <= 0 && b.status === 'active' ? 'exhausted' : b.status) as BatchStatus,
         notes: b.notes || undefined,
       };
     });
@@ -184,6 +201,7 @@ export const inventoryService = {
         production_date: params.productionDate,
         expiry_date: params.expiryDate,
         status: 'active',
+        produced_quantity: params.producedQty,
         notes: params.notes || null,
       })
       .select()

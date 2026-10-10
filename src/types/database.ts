@@ -151,6 +151,7 @@ export interface Database {
           production_date: string;
           expiry_date: string;
           status: 'active' | 'near_expiry' | 'expired' | 'exhausted';
+          produced_quantity: number | null;
           notes: string | null;
           created_at: string;
           updated_at: string;

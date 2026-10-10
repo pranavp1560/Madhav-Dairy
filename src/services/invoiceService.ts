@@ -210,7 +210,46 @@ export const invoiceService = {
 
     await supabase.from('invoice_items').insert(invItemsRows);
 
-    // 4. Double-Entry Customer Ledger (Debit Entry)
+    // 4. Deduct sold quantity from batch_stock and record inventory transaction
+    for (const it of invItemsRows) {
+      if (it.batch_id) {
+        const { data: bStock } = await supabase
+          .from('batch_stock')
+          .select('location_id, quantity_on_hand')
+          .eq('batch_id', it.batch_id)
+          .maybeSingle();
+
+        if (bStock) {
+          const newOnHand = Math.max(0, Number(bStock.quantity_on_hand) - Number(it.quantity));
+          await supabase
+            .from('batch_stock')
+            .update({ quantity_on_hand: newOnHand, updated_at: new Date().toISOString() })
+            .eq('batch_id', it.batch_id);
+
+          if (newOnHand === 0) {
+            await supabase
+              .from('batches')
+              .update({ status: 'exhausted', updated_at: new Date().toISOString() })
+              .eq('id', it.batch_id)
+              .eq('status', 'active');
+          }
+
+          await supabase.from('inventory_transactions').insert({
+            organization_id: orgId,
+            location_id: bStock.location_id,
+            product_sku_id: it.product_sku_id,
+            batch_id: it.batch_id,
+            transaction_type: 'sale',
+            quantity: -it.quantity,
+            reference_type: 'invoice',
+            reference_id: newInv.id,
+            notes: 'Direct invoice sales delivery',
+          });
+        }
+      }
+    }
+
+    // 5. Double-Entry Customer Ledger (Debit Entry)
     await supabase.from('ledger_entries').insert({
       organization_id: orgId,
       customer_id: params.retailerId,
