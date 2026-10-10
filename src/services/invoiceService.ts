@@ -348,5 +348,31 @@ export const invoiceService = {
     });
     if (error) throw error;
     return data;
+  },
+
+  async rejectPayment(invoiceId: string, reason: string) {
+    const { data: inv, error: fetchErr } = await supabase
+      .from('invoices')
+      .select('notes')
+      .eq('id', invoiceId)
+      .single();
+    if (fetchErr) throw fetchErr;
+
+    const newNotes = inv?.notes
+      ? `[Payment Rejected: ${reason.trim()}] ${inv.notes}`
+      : `[Payment Rejected: ${reason.trim()}]`;
+
+    const { error } = await supabase
+      .from('invoices')
+      .update({
+        status: 'delivered',
+        notes: newNotes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', invoiceId);
+
+    if (error) throw error;
+    return { success: true };
   }
 };
+

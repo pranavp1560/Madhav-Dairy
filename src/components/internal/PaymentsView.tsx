@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { CustomerPaymentSubmission, Payment, PaymentSubmissionStatus } from '../../types/dairy';
+import { CustomerPaymentSubmission, Invoice, Payment, PaymentSubmissionStatus } from '../../types/dairy';
 import {
   CreditCard,
   Plus,
@@ -18,7 +18,8 @@ import {
   ExternalLink,
   ShieldAlert,
   Loader2,
-  DollarSign
+  DollarSign,
+  Printer
 } from 'lucide-react';
 
 interface PaymentsViewProps {
@@ -29,6 +30,10 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
   const {
     payments,
     paymentSubmissions,
+    invoices,
+    confirmInvoicePayment,
+    bulkConfirmInvoicePayments,
+    rejectInvoicePayment,
     verifyAndAccountSubmission,
     rejectPaymentSubmission,
     markDirectPaymentAccounted,
@@ -39,8 +44,18 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
 
   const isAdmin = internalRole === 'admin';
 
-  // Active Main Tab
-  const [activeTab, setActiveTab] = useState<'collections' | 'verification_queue'>('collections');
+  // Invoices in Open Payment status
+  const openPaymentInvoices = invoices.filter(inv => inv.status === 'open_payment');
+  const openPaymentInvoicesCount = openPaymentInvoices.length;
+  const openPaymentInvoicesTotal = openPaymentInvoices.reduce((sum, inv) => sum + inv.totalAmount, 0);
+
+  // Active Main Tab - Default to open_invoices if any exist
+  const [activeTab, setActiveTab] = useState<'open_invoices' | 'verification_queue' | 'collections'>('open_invoices');
+
+  // Search & Selection for Open Payment Invoices
+  const [openInvoicesSearch, setOpenInvoicesSearch] = useState('');
+  const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
+  const [selectedInvoiceForAction, setSelectedInvoiceForAction] = useState<Invoice | null>(null);
 
   // Search & Filters for Collections
   const [collectionsSearch, setCollectionsSearch] = useState('');
@@ -54,7 +69,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
   const [selectedSubmission, setSelectedSubmission] = useState<CustomerPaymentSubmission | null>(null);
   const [selectedDirectPayment, setSelectedDirectPayment] = useState<Payment | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [actionModal, setActionModal] = useState<'verify' | 'reject' | 'direct_verify' | 'direct_reject' | null>(null);
+  const [actionModal, setActionModal] = useState<
+    'verify' | 'reject' | 'direct_verify' | 'direct_reject' | 'invoice_confirm' | 'invoice_reject' | null
+  >(null);
   const [verificationNotes, setVerificationNotes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
@@ -182,6 +199,83 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
     }
   };
 
+  // Open Invoices filtering
+  const filteredOpenInvoices = openPaymentInvoices.filter(inv =>
+    inv.invoiceNumber.toLowerCase().includes(openInvoicesSearch.toLowerCase()) ||
+    inv.retailerName.toLowerCase().includes(openInvoicesSearch.toLowerCase()) ||
+    (inv.orderNumber && inv.orderNumber.toLowerCase().includes(openInvoicesSearch.toLowerCase()))
+  );
+
+  const handleStartConfirmInvoice = (inv: Invoice) => {
+    setSelectedInvoiceForAction(inv);
+    setActionModal('invoice_confirm');
+  };
+
+  const handleStartRejectInvoice = (inv: Invoice) => {
+    setSelectedInvoiceForAction(inv);
+    setRejectionReason('');
+    setActionModal('invoice_reject');
+  };
+
+  const handleConfirmInvoiceAction = async () => {
+    if (!selectedInvoiceForAction) return;
+    try {
+      setIsProcessingAction(true);
+      await confirmInvoicePayment(selectedInvoiceForAction.id);
+      setActionModal(null);
+      setSelectedInvoiceForAction(null);
+    } catch (err) {
+      // toast in context
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleRejectInvoiceAction = async () => {
+    if (!selectedInvoiceForAction) return;
+    if (!rejectionReason.trim()) {
+      addToast('A rejection reason is mandatory', 'warning');
+      return;
+    }
+    try {
+      setIsProcessingAction(true);
+      await rejectInvoicePayment(selectedInvoiceForAction.id, rejectionReason.trim());
+      setActionModal(null);
+      setSelectedInvoiceForAction(null);
+    } catch (err) {
+      // toast in context
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleBulkConfirmInvoices = async () => {
+    if (selectedInvoiceIds.length === 0) return;
+    try {
+      setIsProcessingAction(true);
+      await bulkConfirmInvoicePayments(selectedInvoiceIds);
+      setSelectedInvoiceIds([]);
+    } catch (err) {
+      // toast in context
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const toggleSelectAllInvoices = () => {
+    if (selectedInvoiceIds.length === filteredOpenInvoices.length) {
+      setSelectedInvoiceIds([]);
+    } else {
+      setSelectedInvoiceIds(filteredOpenInvoices.map(i => i.id));
+    }
+  };
+
+  const toggleSelectInvoice = (id: string) => {
+    setSelectedInvoiceIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   const renderStatusBadge = (status: PaymentSubmissionStatus) => {
     switch (status) {
       case 'open':
@@ -244,22 +338,95 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
         </div>
       </div>
 
-      {/* Pending Customer Submissions Immediate Action Alert */}
-      {openSubmissionsCount > 0 && (
+      {/* Open Payment Invoices Immediate Action Alert */}
+      {openPaymentInvoicesCount > 0 && (
         <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2.5">
               <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
-                <Clock className="w-5 h-5 animate-pulse" />
+                <AlertCircle className="w-5 h-5 text-white animate-pulse" />
               </div>
               <div>
                 <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
-                  <span>Customer Payments Awaiting Verification</span>
-                  <span className="text-xs bg-amber-200/80 text-amber-900 font-extrabold px-2.5 py-0.5 rounded-full font-mono-numbers">
-                    {openSubmissionsCount} Pending Claims (₹{openSubmissionsAmount.toLocaleString('en-IN')})
+                  <span>Invoices in Open Payment Status Awaiting Confirmation</span>
+                  <span className="text-xs bg-amber-200/90 text-amber-900 font-extrabold px-2.5 py-0.5 rounded-full font-mono-numbers">
+                    {openPaymentInvoicesCount} Invoices (₹{openPaymentInvoicesTotal.toLocaleString('en-IN')})
                   </span>
                 </h3>
                 <p className="text-xs text-amber-800">
+                  Payments have been allocated against these invoices. Confirm and mark as accounted to post double-entry ledger credit and settle the invoices.
+                </p>
+              </div>
+            </div>
+            {isAdmin && (
+              <button
+                onClick={() => bulkConfirmInvoicePayments(openPaymentInvoices.map(i => i.id))}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0 flex items-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Bulk Confirm All ({openPaymentInvoicesCount})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Quick Action Preview Cards for Open Invoices */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+            {openPaymentInvoices.slice(0, 3).map(inv => (
+              <div key={inv.id} className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-2xs space-y-2">
+                <div className="flex items-start justify-between text-xs">
+                  <div>
+                    <span className="font-bold text-slate-900 block">{inv.invoiceNumber}</span>
+                    <span className="text-[10px] text-slate-500 block truncate max-w-[140px]">{inv.retailerName}</span>
+                  </div>
+                  <div className="text-right font-mono-numbers">
+                    <span className="font-black text-slate-900 block">₹{inv.totalAmount.toLocaleString('en-IN')}</span>
+                    <span className="text-[10px] text-emerald-600 font-bold block">Paid: ₹{inv.paidAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+                {isAdmin ? (
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                    <button
+                      onClick={() => handleStartConfirmInvoice(inv)}
+                      className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition-colors flex items-center justify-center gap-1 shadow-2xs"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Confirm & Settle</span>
+                    </button>
+                    <button
+                      onClick={() => handleStartRejectInvoice(inv)}
+                      className="py-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] rounded-lg border border-red-200 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Reject</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-400 font-medium block text-center py-1">
+                    Awaiting Admin Approval
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Pending Customer Submissions Immediate Action Alert */}
+      {openSubmissionsCount > 0 && (
+        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-blue-600 text-white rounded-xl shadow-xs">
+                <Clock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-blue-950 flex items-center gap-2">
+                  <span>Customer Payments Awaiting Verification</span>
+                  <span className="text-xs bg-blue-200/80 text-blue-900 font-extrabold px-2.5 py-0.5 rounded-full font-mono-numbers">
+                    {openSubmissionsCount} Pending Claims (₹{openSubmissionsAmount.toLocaleString('en-IN')})
+                  </span>
+                </h3>
+                <p className="text-xs text-blue-800">
                   Customers have submitted payment references. Review bank statements and mark as accounted or reject.
                 </p>
               </div>
@@ -267,7 +434,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
             {activeTab !== 'verification_queue' && (
               <button
                 onClick={() => setActiveTab('verification_queue')}
-                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
+                className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
               >
                 Go to Verification Queue →
               </button>
@@ -277,7 +444,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
           {/* Quick Action Preview Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
             {openSubmissions.slice(0, 3).map(sub => (
-              <div key={sub.id} className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-2xs space-y-2">
+              <div key={sub.id} className="bg-white p-3 rounded-xl border border-blue-200/80 shadow-2xs space-y-2">
                 <div className="flex items-start justify-between text-xs">
                   <div>
                     <span className="font-bold text-slate-900 block truncate max-w-[150px]">{sub.customerName}</span>
@@ -328,10 +495,52 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
       )}
 
       {/* 2. Top Navigation Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-px">
+      <div className="flex items-center gap-2 border-b border-slate-200 pb-px overflow-x-auto">
+        <button
+          onClick={() => setActiveTab('open_invoices')}
+          className={`pb-3 px-4 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
+            activeTab === 'open_invoices'
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Invoices in Open Payment</span>
+          {openPaymentInvoicesCount > 0 ? (
+            <span className="text-xs font-bold font-mono-numbers bg-amber-500 text-white px-2.5 py-0.5 rounded-full animate-pulse">
+              {openPaymentInvoicesCount} Pending
+            </span>
+          ) : (
+            <span className="text-xs font-mono-numbers bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
+              0
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('verification_queue')}
+          className={`pb-3 px-4 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
+            activeTab === 'verification_queue'
+              ? 'border-blue-600 text-blue-700'
+              : 'border-transparent text-slate-500 hover:text-slate-900'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Customer Verification Claims</span>
+          {openSubmissionsCount > 0 ? (
+            <span className="text-xs font-bold font-mono-numbers bg-blue-600 text-white px-2.5 py-0.5 rounded-full animate-pulse">
+              {openSubmissionsCount} Pending
+            </span>
+          ) : (
+            <span className="text-xs font-mono-numbers bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
+              {paymentSubmissions.length}
+            </span>
+          )}
+        </button>
+
         <button
           onClick={() => setActiveTab('collections')}
-          className={`pb-3 px-4 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
+          className={`pb-3 px-4 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all shrink-0 ${
             activeTab === 'collections'
               ? 'border-blue-600 text-blue-700'
               : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -343,28 +552,171 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
             {payments.length}
           </span>
         </button>
-
-        <button
-          onClick={() => setActiveTab('verification_queue')}
-          className={`pb-3 px-4 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition-all ${
-            activeTab === 'verification_queue'
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent text-slate-500 hover:text-slate-900'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>Customer Payment Verification Queue</span>
-          {openSubmissionsCount > 0 ? (
-            <span className="text-xs font-bold font-mono-numbers bg-blue-600 text-white px-2.5 py-0.5 rounded-full animate-pulse">
-              {openSubmissionsCount} Pending
-            </span>
-          ) : (
-            <span className="text-xs font-mono-numbers bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full">
-              {paymentSubmissions.length}
-            </span>
-          )}
-        </button>
       </div>
+
+      {/* TAB 1: Invoices in Open Payment Status */}
+      {activeTab === 'open_invoices' && (
+        <div className="space-y-6">
+          {/* Summary KPI Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+            <div className="p-4 bg-white rounded-xl border border-amber-200 bg-amber-50/30 shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-amber-700 block">Open Payment Invoices</span>
+              <div className="flex items-baseline justify-between mt-1">
+                <span className="text-2xl font-black text-amber-900 font-mono-numbers">
+                  {openPaymentInvoicesCount} Invoices
+                </span>
+                <span className="text-sm font-bold text-amber-700 font-mono-numbers">
+                  ₹{openPaymentInvoicesTotal.toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">Settled & Accounted Invoices</span>
+              <span className="text-2xl font-black text-emerald-700 font-mono-numbers mt-1 block">
+                {invoices.filter(i => i.status === 'settled').length} Invoices
+              </span>
+            </div>
+
+            <div className="p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">Verification Rule</span>
+              <p className="text-[11px] text-slate-600 mt-1 leading-snug">
+                Invoices in <strong>Open Payment</strong> have allocated money awaiting accounts audit. Confirming marks them accounted and posts double-entry credit.
+              </p>
+            </div>
+          </div>
+
+          {/* Search & Bulk Action Bar */}
+          <div className="bg-white p-3.5 rounded-xl border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+            <div className="relative w-full sm:w-80">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={openInvoicesSearch}
+                onChange={e => setOpenInvoicesSearch(e.target.value)}
+                placeholder="Search invoice #, order #, retailer..."
+                className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-600 focus:bg-white"
+              />
+            </div>
+
+            {isAdmin && selectedInvoiceIds.length > 0 && (
+              <button
+                onClick={handleBulkConfirmInvoices}
+                disabled={isProcessingAction}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+              >
+                {isProcessingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Bulk Confirm Selected ({selectedInvoiceIds.length})</span>
+              </button>
+            )}
+          </div>
+
+          {/* Invoices Table */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs min-w-[850px]">
+                <thead className="bg-slate-50 text-slate-700 font-semibold border-b border-slate-200">
+                  <tr>
+                    <th className="p-3 w-10">
+                      <input
+                        type="checkbox"
+                        checked={
+                          filteredOpenInvoices.length > 0 &&
+                          selectedInvoiceIds.length === filteredOpenInvoices.length
+                        }
+                        onChange={toggleSelectAllInvoices}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
+                    <th className="p-3">Invoice Ref</th>
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Retailer Partner</th>
+                    <th className="p-3 text-right">Invoice Total (₹)</th>
+                    <th className="p-3 text-right">Paid / Allocated (₹)</th>
+                    <th className="p-3 text-right">Balance Due (₹)</th>
+                    <th className="p-3">Status</th>
+                    <th className="p-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-mono-numbers">
+                  {filteredOpenInvoices.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-slate-400 font-sans">
+                        No invoices currently in Open Payment status. All payments are accounted.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredOpenInvoices.map(inv => (
+                      <tr key={inv.id} className="hover:bg-blue-50/30 transition-colors">
+                        <td className="p-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedInvoiceIds.includes(inv.id)}
+                            onChange={() => toggleSelectInvoice(inv.id)}
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
+                        <td className="p-3">
+                          <span className="font-bold text-slate-900 block">{inv.invoiceNumber}</span>
+                          {inv.orderNumber && (
+                            <span className="text-[10px] text-blue-600 block">{inv.orderNumber}</span>
+                          )}
+                        </td>
+                        <td className="p-3 font-sans text-slate-600">{inv.date}</td>
+                        <td className="p-3 font-sans font-bold text-slate-900">{inv.retailerName}</td>
+                        <td className="p-3 text-right font-bold text-slate-900">
+                          ₹{inv.totalAmount.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-3 text-right font-bold text-emerald-600">
+                          ₹{inv.paidAmount.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-3 text-right font-bold text-slate-500">
+                          ₹{inv.outstandingAmount.toLocaleString('en-IN')}
+                        </td>
+                        <td className="p-3 font-sans">
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Open Payment</span>
+                          </span>
+                        </td>
+                        <td className="p-3 text-right font-sans">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isAdmin ? (
+                              <>
+                                <button
+                                  onClick={() => handleStartConfirmInvoice(inv)}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1"
+                                  title="Confirm Payment and Mark Accounted"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Confirm Payment</span>
+                                </button>
+                                <button
+                                  onClick={() => handleStartRejectInvoice(inv)}
+                                  className="px-2 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1"
+                                  title="Reject Payment"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-medium">
+                                Awaiting Admin
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* TAB 1: Collections & Receipts (Existing View) */}
       {activeTab === 'collections' && (
@@ -1063,6 +1415,107 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
               <button
                 type="button"
                 onClick={handleConfirmDirectReject}
+                disabled={isProcessingAction || !rejectionReason.trim()}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isProcessingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Confirm Rejection</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Invoice Payment Confirm Modal */}
+      {actionModal === 'invoice_confirm' && selectedInvoiceForAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs font-sans">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5 text-emerald-700 font-bold text-lg pb-3 border-b border-slate-100">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+              <span>Confirm Invoice Payment & Settle</span>
+            </div>
+            <div className="text-xs text-slate-600 space-y-3">
+              <p>
+                Confirm and mark as accounted the payment for Invoice <strong className="text-slate-900 font-mono-numbers">{selectedInvoiceForAction.invoiceNumber}</strong> of <strong className="text-emerald-700 font-mono-numbers">₹{selectedInvoiceForAction.totalAmount.toLocaleString('en-IN')}</strong> for <strong className="text-slate-900">{selectedInvoiceForAction.retailerName}</strong>?
+              </p>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-emerald-900 text-[11px] space-y-1">
+                <span className="font-bold block">Financial Accounting Action:</span>
+                <ul className="list-disc list-inside space-y-0.5">
+                  <li>Marks linked payments as accounted.</li>
+                  <li>Posts Double-Entry ledger credit to customer account.</li>
+                  <li>Moves invoice status to <strong>Settled</strong>.</li>
+                </ul>
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal(null);
+                  setSelectedInvoiceForAction(null);
+                }}
+                disabled={isProcessingAction}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmInvoiceAction}
+                disabled={isProcessingAction}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                {isProcessingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Confirm & Settle Invoice</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 9. Invoice Payment Reject Modal */}
+      {actionModal === 'invoice_reject' && selectedInvoiceForAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs font-sans">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5 text-red-700 font-bold text-lg pb-3 border-b border-slate-100">
+              <XCircle className="w-6 h-6 text-red-600 shrink-0" />
+              <span>Reject Invoice Payment</span>
+            </div>
+            <div className="text-xs text-slate-600 space-y-3">
+              <p>
+                Reject payment for invoice <strong className="text-slate-900 font-mono-numbers">{selectedInvoiceForAction.invoiceNumber}</strong> (₹{selectedInvoiceForAction.totalAmount.toLocaleString('en-IN')}) for <strong className="text-slate-900">{selectedInvoiceForAction.retailerName}</strong>.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={e => setRejectionReason(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Allocation incorrect, cheque dishonoured, customer requested reversal..."
+                  className="w-full text-xs p-3 rounded-xl border border-slate-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 text-slate-900 placeholder:text-slate-400"
+                />
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-slate-600 text-[11px]">
+                <strong>Note:</strong> Rejection reverts invoice status back to <em>Delivered</em> so it can be re-allocated correctly.
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal(null);
+                  setSelectedInvoiceForAction(null);
+                }}
+                disabled={isProcessingAction}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRejectInvoiceAction}
                 disabled={isProcessingAction || !rejectionReason.trim()}
                 className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
               >

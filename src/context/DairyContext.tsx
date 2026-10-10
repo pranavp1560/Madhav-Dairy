@@ -374,6 +374,7 @@ interface DairyContextType {
   }) => Promise<void>;
   confirmInvoicePayment: (invoiceId: string) => Promise<void>;
   bulkConfirmInvoicePayments: (invoiceIds: string[]) => Promise<{ settled_count?: number; skipped_count?: number }>;
+  rejectInvoicePayment: (invoiceId: string, reason: string) => Promise<void>;
   createInternalOrder: (params: {
     customerId: string;
     items: {
@@ -1821,6 +1822,26 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const rejectInvoicePayment = async (invoiceId: string, reason: string) => {
+    try {
+      await invoiceService.rejectPayment(invoiceId, reason);
+      const [updatedInvoices, updatedPayments, updatedLedger, updatedRetailers] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        paymentService.fetchPayments(),
+        ledgerService.fetchLedger(),
+        customerService.fetchCustomers(),
+      ]);
+      setInvoices(updatedInvoices);
+      setPayments(updatedPayments);
+      setLedger(updatedLedger);
+      setRetailers(updatedRetailers);
+      addToast('Invoice payment rejected and status reverted to Delivered.', 'info');
+    } catch (err: any) {
+      addToast(`Failed to reject invoice payment: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Order status
   const updateOrderStatus = async (orderId: string, status: OrderStatus) => {
     try {
@@ -2282,6 +2303,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         allocateInvoicePayment,
         confirmInvoicePayment,
         bulkConfirmInvoicePayments,
+        rejectInvoicePayment,
         createInternalOrder,
         editOrder,
         orderToEdit,
