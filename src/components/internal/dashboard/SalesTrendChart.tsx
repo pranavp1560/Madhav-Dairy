@@ -1,564 +1,316 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { useDairy } from '../../../context/DairyContext';
-import { getTodayDateString, formatCalendarDate } from '../../../utils/dateUtils';
-import {
-  TrendingUp,
-  Calendar,
-  IndianRupee,
-  ShoppingCart,
-  ChevronDown,
-  Layers,
-  ArrowRight,
-  Filter
-} from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { TrendingUp, Calendar, ArrowUpRight } from 'lucide-react';
+import { formatINR, parseLocalDate, toLocalDateString } from './dashboardUtils';
 
-type DateFilterType = 'today' | '7days' | '30days' | 'this_month' | 'custom';
+export interface SalesDataPoint {
+  dateStr: string;   // YYYY-MM-DD
+  label: string;     // e.g. "08 Oct"
+  sales: number;
+  orderCount: number;
+}
 
-export const SalesTrendChart: React.FC = () => {
-  const { orders, isLoading, setInternalView } = useDairy();
+interface SalesTrendChartProps {
+  data: SalesDataPoint[];
+  isLoading?: boolean;
+}
 
-  const [dateFilter, setDateFilter] = useState<DateFilterType>('7days');
-  const [customStart, setCustomStart] = useState<string>(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 14);
-    return d.toISOString().split('T')[0];
-  });
-  const [customEnd, setCustomEnd] = useState<string>(() => getTodayDateString());
-  const [hoveredPointIndex, setHoveredPointIndex] = useState<number | null>(null);
+export const SalesTrendChart: React.FC<SalesTrendChartProps> = ({
+  data,
+  isLoading = false,
+}) => {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [grouping, setGrouping] = useState<'daily' | 'weekly'>('daily');
 
-  const containerRef = useRef<HTMLDivElement>(null);
+  // Aggregated data according to grouping
+  const chartData = useMemo(() => {
+    if (grouping === 'daily' || data.length <= 10) return data;
 
-  const toDateOnly = (val?: string | null): string => {
-    if (!val) return '';
-    try {
-      const d = new Date(val);
-      if (!isNaN(d.getTime())) {
-        const y = d.getFullYear();
-        const m = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        return `${y}-${m}-${day}`;
-      }
-    } catch {
-      // fallback
-    }
-    return val.split('T')[0];
-  };
-
-  // Generate bucket series based on selected filter
-  const chartSeries = useMemo(() => {
-    const today = new Date();
-    const todayStr = getTodayDateString();
-
-    interface DataBucket {
-      key: string;
-      label: string;
-      shortLabel: string;
-      amount: number;
-      orderCount: number;
-    }
-
-    const buckets: DataBucket[] = [];
-
-    if (dateFilter === 'today') {
-      // Hourly slots for today
-      const hours = [6, 9, 12, 15, 18, 21, 24];
-      hours.forEach((h, i) => {
-        const prevH = i === 0 ? 0 : hours[i - 1];
-        const label = `${String(h).padStart(2, '0')}:00`;
-        buckets.push({
-          key: `today-${h}`,
-          label: `Today ${label}`,
-          shortLabel: label,
-          amount: 0,
-          orderCount: 0,
-        });
+    // Group by 7-day buckets
+    const result: SalesDataPoint[] = [];
+    const chunkSize = 7;
+    for (let i = 0; i < data.length; i += chunkSize) {
+      const chunk = data.slice(i, i + chunkSize);
+      const totalSales = chunk.reduce((s, d) => s + d.sales, 0);
+      const totalOrders = chunk.reduce((s, d) => s + d.orderCount, 0);
+      result.push({
+        dateStr: chunk[0].dateStr,
+        label: `${chunk[0].label} - ${chunk[chunk.length - 1].label}`,
+        sales: totalSales,
+        orderCount: totalOrders,
       });
-
-      // Distribute today's orders
-      orders
-        .filter(o => o.status !== 'cancelled' && toDateOnly(o.orderDate) === todayStr)
-        .forEach(o => {
-          let targetBucketIndex = buckets.length - 1;
-          try {
-            const ordDate = new Date(o.orderDate);
-            const hour = ordDate.getHours();
-            const idx = hours.findIndex(h => hour <= h);
-            if (idx !== -1) targetBucketIndex = idx;
-          } catch {
-            targetBucketIndex = Math.floor(buckets.length / 2);
-          }
-          if (buckets[targetBucketIndex]) {
-            buckets[targetBucketIndex].amount += Number(o.totalAmount) || 0;
-            buckets[targetBucketIndex].orderCount += 1;
-          }
-        });
-    } else {
-      let startD = new Date(today);
-      let endD = new Date(today);
-
-      if (dateFilter === '7days') {
-        startD.setDate(today.getDate() - 6);
-      } else if (dateFilter === '30days') {
-        startD.setDate(today.getDate() - 29);
-      } else if (dateFilter === 'this_month') {
-        startD = new Date(today.getFullYear(), today.getMonth(), 1);
-      } else if (dateFilter === 'custom') {
-        startD = new Date(customStart || todayStr);
-        endD = new Date(customEnd || todayStr);
-        if (startD > endD) {
-          const temp = startD;
-          startD = endD;
-          endD = temp;
-        }
-      }
-
-      // Generate daily buckets
-      const curr = new Date(startD);
-      while (curr <= endD) {
-        const y = curr.getFullYear();
-        const m = String(curr.getMonth() + 1).padStart(2, '0');
-        const d = String(curr.getDate()).padStart(2, '0');
-        const dateKey = `${y}-${m}-${d}`;
-        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const shortLabel = `${d} ${months[curr.getMonth()]}`;
-
-        buckets.push({
-          key: dateKey,
-          label: formatCalendarDate(dateKey),
-          shortLabel,
-          amount: 0,
-          orderCount: 0,
-        });
-        curr.setDate(curr.getDate() + 1);
-      }
-
-      // Aggregate actual orders
-      const bucketMap = new Map<string, DataBucket>();
-      buckets.forEach(b => bucketMap.set(b.key, b));
-
-      orders
-        .filter(o => o.status !== 'cancelled')
-        .forEach(o => {
-          const ordDateKey = toDateOnly(o.orderDate);
-          const b = bucketMap.get(ordDateKey);
-          if (b) {
-            b.amount += Number(o.totalAmount) || 0;
-            b.orderCount += 1;
-          }
-        });
     }
+    return result;
+  }, [data, grouping]);
 
-    return buckets;
-  }, [orders, dateFilter, customStart, customEnd]);
+  const totalPeriodSales = useMemo(() => chartData.reduce((s, d) => s + d.sales, 0), [chartData]);
+  const maxSales = useMemo(() => Math.max(...chartData.map(d => d.sales), 100), [chartData]);
+  const avgSales = useMemo(() => (chartData.length > 0 ? totalPeriodSales / chartData.length : 0), [chartData, totalPeriodSales]);
 
-  // Total metrics in current view
-  const totalPeriodSales = useMemo(
-    () => chartSeries.reduce((sum, b) => sum + b.amount, 0),
-    [chartSeries]
-  );
-  const totalPeriodOrders = useMemo(
-    () => chartSeries.reduce((sum, b) => sum + b.orderCount, 0),
-    [chartSeries]
-  );
-  const avgOrderValue = totalPeriodOrders > 0 ? totalPeriodSales / totalPeriodOrders : 0;
-
-  // Chart dimensions & scaling
-  const chartWidth = 1000;
-  const chartHeight = 240;
-  const paddingLeft = 70;
-  const paddingRight = 30;
+  // SVG dimensions
+  const svgWidth = 600;
+  const svgHeight = 220;
+  const paddingLeft = 50;
+  const paddingRight = 20;
   const paddingTop = 25;
   const paddingBottom = 35;
 
-  const plotWidth = chartWidth - paddingLeft - paddingRight;
-  const plotHeight = chartHeight - paddingTop - paddingBottom;
+  const chartW = svgWidth - paddingLeft - paddingRight;
+  const chartH = svgHeight - paddingTop - paddingBottom;
 
-  const maxSales = useMemo(() => {
-    const rawMax = Math.max(...chartSeries.map(d => d.amount), 0);
-    if (rawMax <= 0) return 5000;
-    // Round up to clean step ceiling
-    const magnitude = Math.pow(10, Math.floor(Math.log10(rawMax)));
-    const multiple = Math.ceil(rawMax / magnitude);
-    return Math.max(multiple * magnitude, 1000);
-  }, [chartSeries]);
-
-  // Compute (x, y) plot coordinates
+  // Compute points
   const points = useMemo(() => {
-    if (chartSeries.length === 0) return [];
-    if (chartSeries.length === 1) {
-      return [
-        {
-          x: paddingLeft + plotWidth / 2,
-          y: paddingTop + plotHeight - (chartSeries[0].amount / maxSales) * plotHeight,
-          data: chartSeries[0],
-          index: 0,
-        },
-      ];
+    if (chartData.length === 0) return [];
+    if (chartData.length === 1) {
+      return [{
+        x: paddingLeft + chartW / 2,
+        y: paddingTop + chartH - (chartData[0].sales / maxSales) * chartH,
+        data: chartData[0],
+      }];
     }
-    return chartSeries.map((d, i) => {
-      const x = paddingLeft + (i / (chartSeries.length - 1)) * plotWidth;
-      const y = paddingTop + plotHeight - (d.amount / maxSales) * plotHeight;
-      return { x, y, data: d, index: i };
+    return chartData.map((d, i) => {
+      const x = paddingLeft + (i / (chartData.length - 1)) * chartW;
+      const y = paddingTop + chartH - (d.sales / maxSales) * chartH;
+      return { x, y, data: d };
     });
-  }, [chartSeries, maxSales, plotWidth, plotHeight]);
+  }, [chartData, maxSales, chartW, chartH, paddingLeft, paddingTop]);
 
-  // Construct smooth SVG path
-  const { linePath, areaPath } = useMemo(() => {
-    if (points.length === 0) return { linePath: '', areaPath: '' };
-    if (points.length === 1) {
-      const p = points[0];
-      return {
-        linePath: `M ${p.x - 20} ${p.y} L ${p.x + 20} ${p.y}`,
-        areaPath: `M ${p.x - 20} ${paddingTop + plotHeight} L ${p.x - 20} ${p.y} L ${p.x + 20} ${p.y} L ${p.x + 20} ${paddingTop + plotHeight} Z`,
-      };
-    }
+  // Construct smooth bezier path
+  const linePath = useMemo(() => {
+    if (points.length === 0) return '';
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
 
-    // Build smooth cubic curve
-    let d = `M ${points[0].x} ${points[0].y}`;
+    let path = `M ${points[0].x} ${points[0].y}`;
     for (let i = 0; i < points.length - 1; i++) {
-      const p0 = points[i === 0 ? 0 : i - 1];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[i + 2 < points.length ? i + 2 : i + 1];
-
-      const cp1x = p1.x + (p2.x - p0.x) / 6;
-      const cp1y = p1.y + (p2.y - p0.y) / 6;
-      const cp2x = p2.x - (p3.x - p1.x) / 6;
-      const cp2y = p2.y - (p3.y - p1.y) / 6;
-
-      d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+      const p0 = points[i];
+      const p1 = points[i + 1];
+      const cpX = (p0.x + p1.x) / 2;
+      path += ` C ${cpX} ${p0.y}, ${cpX} ${p1.y}, ${p1.x} ${p1.y}`;
     }
+    return path;
+  }, [points]);
 
-    const baselineY = paddingTop + plotHeight;
-    const firstX = points[0].x;
-    const lastX = points[points.length - 1].x;
-    const area = `${d} L ${lastX} ${baselineY} L ${firstX} ${baselineY} Z`;
+  // Construct area closed path
+  const areaPath = useMemo(() => {
+    if (points.length < 2) return '';
+    const bottomY = paddingTop + chartH;
+    return `${linePath} L ${points[points.length - 1].x} ${bottomY} L ${points[0].x} ${bottomY} Z`;
+  }, [linePath, points, paddingTop, chartH]);
 
-    return { linePath: d, areaPath: area };
-  }, [points, paddingTop, plotHeight]);
+  // Y-axis ticks
+  const yTicks = [0, maxSales * 0.33, maxSales * 0.66, maxSales];
 
-  // Horizontal grid lines
-  const gridLines = useMemo(() => {
-    const steps = 4;
-    const lines = [];
-    for (let i = 0; i <= steps; i++) {
-      const val = (maxSales / steps) * i;
-      const y = paddingTop + plotHeight - (val / maxSales) * plotHeight;
-      lines.push({ val, y });
-    }
-    return lines;
-  }, [maxSales, paddingTop, plotHeight]);
-
-  // X-axis label indices to prevent label crowding
-  const labelIndices = useMemo(() => {
-    const total = chartSeries.length;
-    if (total <= 7) return chartSeries.map((_, i) => i);
-    const step = Math.ceil(total / 6);
-    const indices: number[] = [];
-    for (let i = 0; i < total; i += step) {
-      indices.push(i);
-    }
-    if (!indices.includes(total - 1)) {
-      indices.push(total - 1);
-    }
-    return indices;
-  }, [chartSeries]);
-
-  // Handle interactive hover over SVG
-  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (points.length === 0) return;
-    const svgRect = e.currentTarget.getBoundingClientRect();
-    const mouseXRatio = (e.clientX - svgRect.left) / svgRect.width;
-    const svgX = mouseXRatio * chartWidth;
-
-    // Find closest point by x coordinate
-    let closestIdx = 0;
-    let minDiff = Infinity;
-    points.forEach((p, idx) => {
-      const diff = Math.abs(p.x - svgX);
-      if (diff < minDiff) {
-        minDiff = diff;
-        closestIdx = idx;
-      }
-    });
-
-    setHoveredPointIndex(closestIdx);
-  };
-
-  const handleMouseLeave = () => {
-    setHoveredPointIndex(null);
-  };
-
-  const hoveredPoint = hoveredPointIndex !== null ? points[hoveredPointIndex] : null;
+  const hoveredPoint = hoveredIdx !== null && points[hoveredIdx] ? points[hoveredIdx] : null;
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
-      {/* Chart Top Header */}
-      <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-4 sm:p-5 flex flex-col justify-between">
+      {/* Chart Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
         <div>
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 tracking-tight">
-                Sales Trend
-              </h3>
-              <p className="text-xs text-slate-500">
-                Live revenue realization from retail fulfillment & orders
-              </p>
-            </div>
+            <span className="w-2 h-2 rounded-full bg-blue-600" />
+            <h2 className="text-sm font-bold text-slate-900 tracking-tight">
+              Sales Revenue Trend
+            </h2>
           </div>
-
-          {/* Quick Metrics Badges */}
-          <div className="flex items-center gap-4 mt-3 text-xs">
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-slate-400 font-medium">Billed:</span>
-              <span className="font-bold text-slate-900 font-mono-numbers text-sm">
-                ₹{totalPeriodSales.toLocaleString('en-IN')}
-              </span>
-            </div>
-            <div className="w-1 h-1 rounded-full bg-slate-300" />
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-slate-400 font-medium">Orders:</span>
-              <span className="font-bold text-slate-800 font-mono-numbers text-sm">
-                {totalPeriodOrders}
-              </span>
-            </div>
-            <div className="w-1 h-1 rounded-full bg-slate-300" />
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-slate-400 font-medium">AOV:</span>
-              <span className="font-bold text-slate-800 font-mono-numbers text-sm">
-                ₹{Math.round(avgOrderValue).toLocaleString('en-IN')}
-              </span>
-            </div>
-          </div>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Daily order revenue recognized for the active period
+          </p>
         </div>
 
-        {/* Date Filter Buttons */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              { id: 'today', label: 'Today' },
-              { id: '7days', label: 'Last 7 Days' },
-              { id: '30days', label: 'Last 30 Days' },
-              { id: 'this_month', label: 'This Month' },
-              { id: 'custom', label: 'Custom Range' },
-            ] as const
-          ).map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setDateFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                dateFilter === tab.id
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          {/* Summary Pills */}
+          <div className="text-right hidden sm:block">
+            <span className="text-xs font-bold text-slate-900 font-mono-numbers">
+              {formatINR(totalPeriodSales)}
+            </span>
+            <span className="block text-[10px] text-slate-400">Total in Period</span>
+          </div>
+
+          {/* Grouping Toggle */}
+          {data.length > 7 && (
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-[10px] font-semibold">
+              <button
+                onClick={() => setGrouping('daily')}
+                className={`px-2 py-1 rounded-md transition-all ${
+                  grouping === 'daily' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                Daily
+              </button>
+              <button
+                onClick={() => setGrouping('weekly')}
+                className={`px-2 py-1 rounded-md transition-all ${
+                  grouping === 'weekly' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                Weekly
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Custom Range Selector bar */}
-      {dateFilter === 'custom' && (
-        <div className="px-5 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-wrap items-center gap-3 text-xs">
-          <span className="text-slate-600 font-semibold flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5 text-blue-600" />
-            Date Span:
-          </span>
-          <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={customStart}
-              onChange={e => setCustomStart(e.target.value)}
-              className="px-2.5 py-1 bg-white border border-slate-200 rounded-md text-slate-800 focus:outline-none focus:border-blue-600"
-            />
-            <span className="text-slate-400 font-medium">to</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={e => setCustomEnd(e.target.value)}
-              className="px-2.5 py-1 bg-white border border-slate-200 rounded-md text-slate-800 focus:outline-none focus:border-blue-600"
-            />
-          </div>
+      {/* SVG Canvas Area */}
+      {isLoading ? (
+        <div className="h-56 flex items-center justify-center text-slate-400 text-xs">
+          Loading sales data...
         </div>
-      )}
+      ) : chartData.length === 0 || totalPeriodSales === 0 ? (
+        <div className="h-56 flex flex-col items-center justify-center text-slate-400 text-xs">
+          <Calendar className="w-8 h-8 text-slate-300 mb-1.5" />
+          <p className="font-semibold text-slate-600">No Sales in Selected Period</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">Orders placed in this date range will reflect here automatically.</p>
+        </div>
+      ) : (
+        <div className="relative w-full overflow-hidden">
+          <svg
+            viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+            className="w-full h-52 sm:h-56 select-none"
+            preserveAspectRatio="none"
+          >
+            <defs>
+              <linearGradient id="salesAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#2563eb" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="#2563eb" stopOpacity="0.00" />
+              </linearGradient>
+            </defs>
 
-      {/* Responsive Chart Surface */}
-      <div ref={containerRef} className="p-4 sm:p-5 relative select-none">
-        {isLoading ? (
-          <div className="h-60 flex flex-col items-center justify-center gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-blue-600 border-t-transparent animate-spin" />
-            <span className="text-xs text-slate-500 font-medium">
-              Loading live sales telemetry...
-            </span>
-          </div>
-        ) : totalPeriodSales === 0 ? (
-          <div className="h-60 flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mb-2">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-            <h4 className="text-xs font-bold text-slate-800">
-              No sales logged for this date window
-            </h4>
-            <p className="text-[11px] text-slate-500 mt-1 max-w-sm">
-              Live orders and retailer fulfillments created in this period will automatically map to this curve.
-            </p>
-            <div className="flex items-center gap-2 mt-3">
-              <button
-                onClick={() => setDateFilter('30days')}
-                className="px-3 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-md text-xs font-medium text-slate-700 transition-colors"
-              >
-                View Last 30 Days
-              </button>
-              <button
-                onClick={() => setInternalView('create_order')}
-                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors"
-              >
-                + New Order
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="relative">
-            <svg
-              viewBox={`0 0 ${chartWidth} ${chartHeight}`}
-              className="w-full h-auto overflow-visible cursor-crosshair"
-              style={{ minHeight: '220px' }}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-            >
-              <defs>
-                <linearGradient id="salesTrendGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2563EB" stopOpacity="0.22" />
-                  <stop offset="85%" stopColor="#2563EB" stopOpacity="0.02" />
-                  <stop offset="100%" stopColor="#2563EB" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
-
-              {/* Grid Lines & Y-Axis Labels */}
-              {gridLines.map((line, i) => (
-                <g key={i}>
+            {/* Horizontal Grid Lines & Y Ticks */}
+            {yTicks.map((val, idx) => {
+              const y = paddingTop + chartH - (val / maxSales) * chartH;
+              return (
+                <g key={idx}>
                   <line
                     x1={paddingLeft}
-                    y1={line.y}
-                    x2={chartWidth - paddingRight}
-                    y2={line.y}
-                    stroke="#E2E8F0"
-                    strokeDasharray="4 4"
+                    y1={y}
+                    x2={svgWidth - paddingRight}
+                    y2={y}
+                    stroke="#e2e8f0"
+                    strokeDasharray="3 3"
                     strokeWidth="1"
                   />
                   <text
-                    x={paddingLeft - 10}
-                    y={line.y + 3.5}
+                    x={paddingLeft - 8}
+                    y={y + 3}
                     textAnchor="end"
-                    fill="#94A3B8"
-                    fontSize="10.5"
+                    fill="#94a3b8"
+                    fontSize="9"
                     fontFamily="monospace"
                   >
-                    ₹{line.val >= 1000 ? `${(line.val / 1000).toFixed(0)}k` : line.val}
+                    {formatINR(val, true)}
                   </text>
                 </g>
-              ))}
+              );
+            })}
 
-              {/* Area Gradient Fill */}
-              {areaPath && (
-                <path d={areaPath} fill="url(#salesTrendGrad)" />
-              )}
+            {/* Area Fill */}
+            {areaPath && (
+              <path d={areaPath} fill="url(#salesAreaGradient)" />
+            )}
 
-              {/* Smooth Primary Line */}
-              {linePath && (
-                <path
-                  d={linePath}
-                  fill="none"
-                  stroke="#2563EB"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
+            {/* Main Trend Line */}
+            {linePath && (
+              <path
+                d={linePath}
+                fill="none"
+                stroke="#2563eb"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            )}
 
-              {/* Data Point Markers */}
-              {points.map((p, i) => (
-                <circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={hoveredPointIndex === i ? 5.5 : p.data.amount > 0 ? 3.5 : 2}
-                  fill={hoveredPointIndex === i ? '#2563EB' : p.data.amount > 0 ? '#FFFFFF' : '#CBD5E1'}
-                  stroke="#2563EB"
-                  strokeWidth={hoveredPointIndex === i ? 2.5 : p.data.amount > 0 ? 2 : 1}
-                  className="transition-all duration-150"
-                />
-              ))}
+            {/* Hover guideline */}
+            {hoveredPoint && (
+              <line
+                x1={hoveredPoint.x}
+                y1={paddingTop}
+                x2={hoveredPoint.x}
+                y2={paddingTop + chartH}
+                stroke="#3b82f6"
+                strokeDasharray="2 2"
+                strokeWidth="1.5"
+              />
+            )}
 
-              {/* Active Hover Crosshair Guideline */}
-              {hoveredPoint && (
-                <g>
-                  <line
-                    x1={hoveredPoint.x}
-                    y1={paddingTop}
-                    x2={hoveredPoint.x}
-                    y2={paddingTop + plotHeight}
-                    stroke="#3B82F6"
-                    strokeDasharray="3 3"
-                    strokeWidth="1.5"
+            {/* Data Dots & Click Target overlays */}
+            {points.map((p, idx) => {
+              const isHovered = hoveredIdx === idx;
+              return (
+                <g key={idx}>
+                  {/* Invisible broad hitbox for touch & mouse */}
+                  <rect
+                    x={p.x - 14}
+                    y={paddingTop}
+                    width={28}
+                    height={chartH}
+                    fill="transparent"
+                    onMouseEnter={() => setHoveredIdx(idx)}
+                    onMouseLeave={() => setHoveredIdx(null)}
+                    className="cursor-pointer"
+                  />
+                  {/* Visible Dot */}
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={isHovered ? 5.5 : 3}
+                    fill="#ffffff"
+                    stroke={isHovered ? '#1d4ed8' : '#2563eb'}
+                    strokeWidth={isHovered ? 2.5 : 2}
+                    className="transition-all pointer-events-none"
                   />
                 </g>
-              )}
+              );
+            })}
 
-              {/* X-Axis Ticks & Date Labels */}
-              {labelIndices.map(idx => {
-                const p = points[idx];
-                if (!p) return null;
-                return (
-                  <text
-                    key={idx}
-                    x={p.x}
-                    y={paddingTop + plotHeight + 20}
-                    textAnchor="middle"
-                    fill="#64748B"
-                    fontSize="10.5"
-                    fontWeight="500"
-                  >
-                    {p.data.shortLabel}
-                  </text>
-                );
-              })}
-            </svg>
+            {/* X-axis Labels */}
+            {points.map((p, idx) => {
+              // Show label if sparse or specific steps
+              const step = Math.ceil(points.length / 7);
+              if (idx % step !== 0 && idx !== points.length - 1) return null;
+              return (
+                <text
+                  key={idx}
+                  x={p.x}
+                  y={svgHeight - 12}
+                  textAnchor="middle"
+                  fill="#64748b"
+                  fontSize="9.5"
+                  fontWeight="500"
+                >
+                  {p.data.label}
+                </text>
+              );
+            })}
+          </svg>
 
-            {/* Currency-Formatted Tooltip Card */}
-            {hoveredPoint && (
-              <div
-                className="absolute z-30 pointer-events-none transform -translate-x-1/2 -translate-y-full mb-3"
-                style={{
-                  left: `${(hoveredPoint.x / chartWidth) * 100}%`,
-                  top: `${(hoveredPoint.y / chartHeight) * 100}%`,
-                }}
-              >
-                <div className="bg-slate-900 text-white rounded-lg shadow-xl px-3 py-2 border border-slate-700 text-xs min-w-[130px] animate-in fade-in zoom-in-95 duration-100">
-                  <div className="text-[10.5px] text-slate-300 font-semibold border-b border-slate-700 pb-1 flex items-center justify-between gap-2">
-                    <span>{hoveredPoint.data.label}</span>
-                  </div>
-                  <div className="mt-1 flex items-baseline justify-between gap-3">
-                    <span className="text-[11px] text-slate-400">Sales:</span>
-                    <span className="font-bold font-mono-numbers text-sm text-emerald-400">
-                      ₹{hoveredPoint.data.amount.toLocaleString('en-IN')}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[10.5px] text-slate-400 mt-0.5">
-                    <span>Orders:</span>
-                    <span className="font-medium text-slate-200">
-                      {hoveredPoint.data.orderCount}
-                    </span>
-                  </div>
-                </div>
+          {/* Floating Tooltip Box */}
+          {hoveredPoint && (
+            <div
+              className="absolute z-10 pointer-events-none bg-slate-900 text-white rounded-xl px-3 py-2 text-xs shadow-xl border border-slate-700/80 -translate-x-1/2 -translate-y-full transition-all"
+              style={{
+                left: `${(hoveredPoint.x / svgWidth) * 100}%`,
+                top: `${(hoveredPoint.y / svgHeight) * 100 - 8}%`,
+              }}
+            >
+              <div className="font-semibold text-[11px] text-slate-300 flex items-center justify-between gap-3">
+                <span>{hoveredPoint.data.label}</span>
+                <span className="text-[10px] text-blue-400 font-mono-numbers">
+                  {hoveredPoint.data.orderCount} order{hoveredPoint.data.orderCount !== 1 ? 's' : ''}
+                </span>
               </div>
-            )}
-          </div>
-        )}
+              <div className="text-sm font-black font-mono-numbers text-white mt-0.5">
+                {formatINR(hoveredPoint.data.sales)}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Chart Footer Stats */}
+      <div className="pt-2.5 mt-1 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+        <span>Average Daily Run: <strong className="font-mono-numbers text-slate-800">{formatINR(avgSales)}</strong></span>
+        <span>Peak Day: <strong className="font-mono-numbers text-slate-800">{formatINR(maxSales)}</strong></span>
       </div>
     </div>
   );
