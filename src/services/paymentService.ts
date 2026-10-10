@@ -27,8 +27,9 @@ export const paymentService = {
         accounted_by,
         customers(business_name),
         payment_allocations(
+          invoice_id,
           allocated_amount,
-          invoices(invoice_number)
+          invoices(id, invoice_number, status)
         )
       `)
       .order('payment_date', { ascending: false });
@@ -36,7 +37,10 @@ export const paymentService = {
     if (error) throw error;
 
     return (payList || []).map((p: any): Payment => {
-      const invNum = (p.payment_allocations?.[0] as any)?.invoices?.invoice_number || 'Direct Payment';
+      const firstAlloc = p.payment_allocations?.[0];
+      const invNum = firstAlloc?.invoices?.invoice_number || 'Direct Payment';
+      const invId = firstAlloc?.invoice_id || firstAlloc?.invoices?.id;
+      const invStatus = firstAlloc?.invoices?.status;
       return {
         id: p.id,
         paymentNumber: p.payment_number,
@@ -44,6 +48,8 @@ export const paymentService = {
         retailerId: p.customer_id,
         retailerName: p.customers?.business_name || 'Retailer Customer',
         invoiceNumber: invNum,
+        invoiceId: invId,
+        invoiceStatus: invStatus,
         amount: Number(p.amount),
         paymentMethod: p.payment_method as PaymentMethod,
         reference: p.reference_number || 'Direct Transfer',

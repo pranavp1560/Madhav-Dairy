@@ -819,6 +819,12 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
                         Full Dues (₹{customerTotalOutstanding.toLocaleString('en-IN')})
                       </button>
                     </div>
+                    {numericPaymentAmount > customerTotalOutstanding && (
+                      <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
+                        <span>Amount cannot exceed customer's total outstanding balance of ₹{customerTotalOutstanding.toLocaleString('en-IN')}</span>
+                      </p>
+                    )}
                   </div>
 
                   {/* Payment Method */}

@@ -259,6 +259,8 @@ export interface Payment {
   isAccounted?: boolean;
   accountedAt?: string;
   accountedBy?: string;
+  invoiceId?: string;
+  invoiceStatus?: InvoiceStatus;
 }
 
 export interface CustomerOutstandingSummary {

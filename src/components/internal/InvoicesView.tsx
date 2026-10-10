@@ -23,7 +23,8 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     bulkDeliverInvoices, 
     allocateInvoicePayment, 
     confirmInvoicePayment, 
-    bulkConfirmInvoicePayments 
+    bulkConfirmInvoicePayments,
+    addToast
   } = useDairy();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,7 +106,26 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
 
   const handleSubmitAllocation = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!allocatingInvoice || allocAmount <= 0) return;
+    if (!allocatingInvoice) return;
+
+    const maxAllowed = allocatingInvoice.outstandingAmount > 0 
+      ? allocatingInvoice.outstandingAmount 
+      : 0;
+
+    if (maxAllowed <= 0) {
+      addToast('This invoice has no outstanding balance to allocate payment against.', 'warning');
+      return;
+    }
+
+    if (allocAmount <= 0) {
+      addToast('Payment allocation amount must be greater than zero.', 'warning');
+      return;
+    }
+
+    if (allocAmount > maxAllowed) {
+      addToast(`Payment amount (₹${allocAmount.toLocaleString('en-IN')}) cannot exceed remaining outstanding balance of ₹${maxAllowed.toLocaleString('en-IN')}`, 'error');
+      return;
+    }
 
     setIsSubmittingAlloc(true);
     try {
@@ -449,18 +469,39 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Payment Amount (₹) <span className="text-red-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700">
+                    Payment Amount (₹) <span className="text-red-500">*</span>
+                  </label>
+                  {allocatingInvoice.outstandingAmount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAllocAmount(allocatingInvoice.outstandingAmount)}
+                      className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded transition-colors"
+                    >
+                      Fill Full (₹{allocatingInvoice.outstandingAmount.toLocaleString('en-IN')})
+                    </button>
+                  )}
+                </div>
                 <input
                   type="number"
                   min="1"
-                  max={allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : allocatingInvoice.totalAmount}
+                  max={allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : 0}
                   value={allocAmount}
                   onChange={e => setAllocAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full p-2.5 bg-slate-50/50 border border-slate-300 rounded-lg text-xs font-mono-numbers font-bold text-green-600 focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+                  className={`w-full p-2.5 bg-slate-50/50 border rounded-lg text-xs font-mono-numbers font-bold focus:ring-2 focus:outline-none ${
+                    allocAmount > (allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : 0)
+                      ? 'border-red-400 text-red-600 focus:border-red-600 focus:ring-red-100'
+                      : 'border-slate-300 text-emerald-600 focus:border-blue-600 focus:ring-blue-100'
+                  }`}
                   required
                 />
+                {allocAmount > (allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : 0) && (
+                  <p className="text-[10px] text-red-600 font-bold mt-1 flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-red-500 shrink-0" />
+                    <span>Cannot exceed remaining outstanding balance of ₹{(allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : 0).toLocaleString('en-IN')}</span>
+                  </p>
+                )}
               </div>
 
               <div>
@@ -542,8 +583,12 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
               </button>
               <button
                 type="submit"
-                disabled={isSubmittingAlloc}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-bold shadow-sm transition-all flex items-center gap-1.5"
+                disabled={
+                  isSubmittingAlloc || 
+                  allocAmount <= 0 || 
+                  allocAmount > (allocatingInvoice.outstandingAmount > 0 ? allocatingInvoice.outstandingAmount : 0)
+                }
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg font-bold shadow-sm transition-all flex items-center gap-1.5"
               >
                 <CreditCard className="w-3.5 h-3.5" />
                 <span>{isSubmittingAlloc ? 'Allocating...' : 'Allocate Payment'}</span>
