@@ -153,6 +153,8 @@ interface DairyContextType {
   }) => Promise<{ success: boolean; submission_id: string; message: string }>;
   verifyAndAccountSubmission: (submissionId: string, notes?: string) => Promise<any>;
   rejectPaymentSubmission: (submissionId: string, reason: string) => Promise<any>;
+  markDirectPaymentAccounted: (paymentId: string) => Promise<void>;
+  rejectDirectPayment: (paymentId: string, reason: string) => Promise<void>;
 
   // Cart
   cart: CartItem[];
@@ -2145,6 +2147,28 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const markDirectPaymentAccounted = async (paymentId: string) => {
+    try {
+      await paymentService.markPaymentAccounted(paymentId);
+      addToast('Payment marked as accounted successfully!', 'success');
+      await refreshData();
+    } catch (err: any) {
+      addToast(`Failed to mark payment as accounted: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const rejectDirectPayment = async (paymentId: string, reason: string) => {
+    try {
+      await paymentService.rejectPayment(paymentId, reason);
+      addToast('Payment marked as rejected/voided', 'info');
+      await refreshData();
+    } catch (err: any) {
+      addToast(`Failed to reject payment: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   return (
     <DairyContext.Provider
       value={{
@@ -2284,6 +2308,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         submitCustomerPayment,
         verifyAndAccountSubmission,
         rejectPaymentSubmission,
+        markDirectPaymentAccounted,
+        rejectDirectPayment,
 
         toasts,
         addToast,

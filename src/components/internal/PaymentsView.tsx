@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { CustomerPaymentSubmission, PaymentSubmissionStatus } from '../../types/dairy';
+import { CustomerPaymentSubmission, Payment, PaymentSubmissionStatus } from '../../types/dairy';
 import {
   CreditCard,
   Plus,
@@ -31,6 +31,8 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
     paymentSubmissions,
     verifyAndAccountSubmission,
     rejectPaymentSubmission,
+    markDirectPaymentAccounted,
+    rejectDirectPayment,
     internalRole,
     addToast
   } = useDairy();
@@ -50,8 +52,9 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
 
   // Modal Detail & Action States
   const [selectedSubmission, setSelectedSubmission] = useState<CustomerPaymentSubmission | null>(null);
+  const [selectedDirectPayment, setSelectedDirectPayment] = useState<Payment | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [actionModal, setActionModal] = useState<'verify' | 'reject' | null>(null);
+  const [actionModal, setActionModal] = useState<'verify' | 'reject' | 'direct_verify' | 'direct_reject' | null>(null);
   const [verificationNotes, setVerificationNotes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [isProcessingAction, setIsProcessingAction] = useState(false);
@@ -136,6 +139,49 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
     }
   };
 
+  const handleStartDirectAccount = (payment: Payment) => {
+    setSelectedDirectPayment(payment);
+    setActionModal('direct_verify');
+  };
+
+  const handleStartDirectReject = (payment: Payment) => {
+    setSelectedDirectPayment(payment);
+    setRejectionReason('');
+    setActionModal('direct_reject');
+  };
+
+  const handleConfirmDirectAccount = async () => {
+    if (!selectedDirectPayment) return;
+    try {
+      setIsProcessingAction(true);
+      await markDirectPaymentAccounted(selectedDirectPayment.id);
+      setActionModal(null);
+      setSelectedDirectPayment(null);
+    } catch (err) {
+      // Toast triggered in context
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
+  const handleConfirmDirectReject = async () => {
+    if (!selectedDirectPayment) return;
+    if (!rejectionReason.trim()) {
+      addToast('A rejection reason is mandatory', 'warning');
+      return;
+    }
+    try {
+      setIsProcessingAction(true);
+      await rejectDirectPayment(selectedDirectPayment.id, rejectionReason.trim());
+      setActionModal(null);
+      setSelectedDirectPayment(null);
+    } catch (err) {
+      // Toast triggered in context
+    } finally {
+      setIsProcessingAction(false);
+    }
+  };
+
   const renderStatusBadge = (status: PaymentSubmissionStatus) => {
     switch (status) {
       case 'open':
@@ -197,6 +243,89 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
           </button>
         </div>
       </div>
+
+      {/* Pending Customer Submissions Immediate Action Alert */}
+      {openSubmissionsCount > 0 && (
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-amber-500 text-white rounded-xl shadow-xs">
+                <Clock className="w-5 h-5 animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-amber-950 flex items-center gap-2">
+                  <span>Customer Payments Awaiting Verification</span>
+                  <span className="text-xs bg-amber-200/80 text-amber-900 font-extrabold px-2.5 py-0.5 rounded-full font-mono-numbers">
+                    {openSubmissionsCount} Pending Claims (₹{openSubmissionsAmount.toLocaleString('en-IN')})
+                  </span>
+                </h3>
+                <p className="text-xs text-amber-800">
+                  Customers have submitted payment references. Review bank statements and mark as accounted or reject.
+                </p>
+              </div>
+            </div>
+            {activeTab !== 'verification_queue' && (
+              <button
+                onClick={() => setActiveTab('verification_queue')}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors shrink-0"
+              >
+                Go to Verification Queue →
+              </button>
+            )}
+          </div>
+
+          {/* Quick Action Preview Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+            {openSubmissions.slice(0, 3).map(sub => (
+              <div key={sub.id} className="bg-white p-3 rounded-xl border border-amber-200/80 shadow-2xs space-y-2">
+                <div className="flex items-start justify-between text-xs">
+                  <div>
+                    <span className="font-bold text-slate-900 block truncate max-w-[150px]">{sub.customerName}</span>
+                    <span className="text-[10px] text-blue-700 font-mono-numbers">{sub.invoiceNumber}</span>
+                  </div>
+                  <span className="font-black text-emerald-700 font-mono-numbers">₹{sub.amount.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-600 font-mono-numbers">
+                  <span className="truncate max-w-[130px] bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200">UTR: {sub.transactionReference}</span>
+                  <span className="uppercase text-[10px] font-semibold text-slate-500">{sub.paymentMethodType}</span>
+                </div>
+                {isAdmin ? (
+                  <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100">
+                    <button
+                      onClick={() => handleStartVerify(sub)}
+                      className="flex-1 py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-lg transition-colors flex items-center justify-center gap-1 shadow-2xs"
+                    >
+                      <Check className="w-3 h-3" />
+                      <span>Mark Accounted</span>
+                    </button>
+                    <button
+                      onClick={() => handleStartReject(sub)}
+                      className="py-1 px-2.5 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-[11px] rounded-lg border border-red-200 transition-colors flex items-center justify-center gap-1"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Reject</span>
+                    </button>
+                    <button
+                      onClick={() => handleOpenDetail(sub)}
+                      className="p-1 hover:bg-slate-100 text-slate-600 rounded-lg transition-colors"
+                      title="View Details"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleOpenDetail(sub)}
+                    className="w-full py-1 text-center text-xs font-semibold text-blue-600 hover:bg-blue-50 rounded-lg border border-blue-200"
+                  >
+                    View Details
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* 2. Top Navigation Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-px">
@@ -289,6 +418,7 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
                     <th className="p-3">Reference / UTR</th>
                     <th className="p-3">Accounting Status</th>
                     <th className="p-3">Recorded By</th>
+                    <th className="p-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-mono-numbers">
@@ -320,6 +450,34 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
                         )}
                       </td>
                       <td className="p-3 font-sans text-slate-600">{p.recordedBy}</td>
+                      <td className="p-3 text-right font-sans">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {!p.isAccounted && isAdmin ? (
+                            <>
+                              <button
+                                onClick={() => handleStartDirectAccount(p)}
+                                className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1"
+                                title="Mark Accounted"
+                              >
+                                <Check className="w-3 h-3" />
+                                <span>Mark Accounted</span>
+                              </button>
+                              <button
+                                onClick={() => handleStartDirectReject(p)}
+                                className="px-2 py-1 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1"
+                                title="Reject / Void"
+                              >
+                                <X className="w-3 h-3" />
+                                <span>Reject</span>
+                              </button>
+                            </>
+                          ) : (
+                            <span className="text-[11px] font-medium text-slate-400">
+                              {p.isAccounted ? 'Verified' : 'Staff View'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -493,18 +651,19 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
                               <>
                                 <button
                                   onClick={() => handleStartVerify(sub)}
-                                  className="px-2.5 py-1 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1"
-                                  title="Verify & Account"
+                                  className="px-3 py-1.5 text-[11px] font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center gap-1.5"
+                                  title="Verify & Mark Accounted"
                                 >
-                                  <Check className="w-3 h-3" />
-                                  <span>Account</span>
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Mark Accounted</span>
                                 </button>
                                 <button
                                   onClick={() => handleStartReject(sub)}
-                                  className="px-2 py-1 text-[11px] font-semibold text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition-colors"
+                                  className="px-2.5 py-1.5 text-[11px] font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-lg border border-red-200 transition-colors flex items-center gap-1"
                                   title="Reject Submission"
                                 >
-                                  <X className="w-3 h-3" />
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
                                 </button>
                               </>
                             )}
@@ -820,6 +979,101 @@ export const PaymentsView: React.FC<PaymentsViewProps> = ({ onOpenRecordPayment 
           </div>
         </div>
       )}
+
+      {/* 6. Direct Payment Account Modal */}
+      {actionModal === 'direct_verify' && selectedDirectPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs font-sans">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5 text-emerald-700 font-bold text-lg pb-3 border-b border-slate-100">
+              <CheckCircle2 className="w-6 h-6 text-emerald-600 shrink-0" />
+              <span>Mark Payment as Accounted</span>
+            </div>
+            <div className="text-xs text-slate-600 space-y-3">
+              <p>
+                Are you sure you want to mark receipt <strong className="text-slate-900 font-mono-numbers">{selectedDirectPayment.paymentNumber}</strong> of <strong className="text-emerald-700 font-mono-numbers">₹{selectedDirectPayment.amount.toLocaleString('en-IN')}</strong> from <strong className="text-slate-900">{selectedDirectPayment.retailerName}</strong> as accounted?
+              </p>
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-emerald-900 text-[11px] space-y-1">
+                <span className="font-bold block">Status Update:</span>
+                <p>This confirms that payment has cleared and marks the collection record as accounted.</p>
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal(null);
+                  setSelectedDirectPayment(null);
+                }}
+                disabled={isProcessingAction}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDirectAccount}
+                disabled={isProcessingAction}
+                className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5"
+              >
+                {isProcessingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Confirm & Mark Accounted</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Direct Payment Reject Modal */}
+      {actionModal === 'direct_reject' && selectedDirectPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs font-sans">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2.5 text-red-700 font-bold text-lg pb-3 border-b border-slate-100">
+              <XCircle className="w-6 h-6 text-red-600 shrink-0" />
+              <span>Reject / Void Payment</span>
+            </div>
+            <div className="text-xs text-slate-600 space-y-3">
+              <p>
+                Provide a reason for rejecting payment receipt <strong className="text-slate-900 font-mono-numbers">{selectedDirectPayment.paymentNumber}</strong> (₹{selectedDirectPayment.amount.toLocaleString('en-IN')}) from <strong className="text-slate-900">{selectedDirectPayment.retailerName}</strong>:
+              </p>
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rejection Reason *
+                </label>
+                <textarea
+                  value={rejectionReason}
+                  onChange={e => setRejectionReason(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. Cheque returned, erroneous transfer, duplicate payment record..."
+                  className="w-full text-xs p-3 rounded-xl border border-slate-300 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 text-slate-900 placeholder:text-slate-400"
+                />
+              </div>
+            </div>
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActionModal(null);
+                  setSelectedDirectPayment(null);
+                }}
+                disabled={isProcessingAction}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDirectReject}
+                disabled={isProcessingAction || !rejectionReason.trim()}
+                className="px-5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white font-bold transition-all shadow-sm flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isProcessingAction && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>Confirm Rejection</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

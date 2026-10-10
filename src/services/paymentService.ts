@@ -229,4 +229,45 @@ export const paymentService = {
     if (error) throw error;
     return data as RecordCustomerPaymentResult;
   },
+
+  async markPaymentAccounted(paymentId: string): Promise<void> {
+    const { data: { user } } = await supabase.auth.getUser();
+    const { error } = await supabase
+      .from('payments')
+      .update({
+        is_accounted: true,
+        accounted_at: new Date().toISOString(),
+        accounted_by: user?.id || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', paymentId);
+
+    if (error) throw error;
+  },
+
+  async rejectPayment(paymentId: string, reason: string): Promise<void> {
+    const { data: existing, error: fetchErr } = await supabase
+      .from('payments')
+      .select('notes')
+      .eq('id', paymentId)
+      .single();
+
+    if (fetchErr) throw fetchErr;
+
+    const updatedNotes = existing?.notes
+      ? `[REJECTED: ${reason.trim()}] ${existing.notes}`
+      : `[REJECTED: ${reason.trim()}]`;
+
+    const { error } = await supabase
+      .from('payments')
+      .update({
+        is_accounted: false,
+        notes: updatedNotes,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', paymentId);
+
+    if (error) throw error;
+  },
 };
+
