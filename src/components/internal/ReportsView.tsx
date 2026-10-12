@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useDairy } from '../../context/DairyContext';
+import { MultiSelectFilter, MultiSelectOption } from './MultiSelectFilter';
 import {
   BarChart3,
   Download,
@@ -63,11 +64,11 @@ export const ReportsView: React.FC = () => {
   const [activeReport, setActiveReport] = useState<ReportTab>('sales');
 
   // ---------------------------------------------------------------------------
-  // FILTER STATES
+  // FILTER STATES (MULTI-SELECT SUPPORTED)
   // ---------------------------------------------------------------------------
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string>('all');
-  const [selectedArea, setSelectedArea] = useState<string>('all');
-  const [selectedProduct, setSelectedProduct] = useState<string>('all');
+  const [selectedCustomerIds, setSelectedCustomerIds] = useState<string[]>([]);
+  const [selectedAreas, setSelectedAreas] = useState<string[]>([]);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
   const [datePeriod, setDatePeriod] = useState<DatePeriod>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -97,17 +98,40 @@ export const ReportsView: React.FC = () => {
     return [...retailers].sort((a, b) => a.businessName.localeCompare(b.businessName));
   }, [retailers]);
 
+  // Options formatted for MultiSelectFilter
+  const customerOptions: MultiSelectOption[] = useMemo(() => {
+    return sortedRetailers.map(r => ({
+      value: r.id,
+      label: r.businessName,
+      sublabel: r.area ? `${r.area}` : r.address || undefined
+    }));
+  }, [sortedRetailers]);
+
+  const areaOptions: MultiSelectOption[] = useMemo(() => {
+    return uniqueAreas.map(area => ({
+      value: area,
+      label: area
+    }));
+  }, [uniqueAreas]);
+
+  const productOptions: MultiSelectOption[] = useMemo(() => {
+    return uniqueProductNames.map(pName => ({
+      value: pName,
+      label: pName
+    }));
+  }, [uniqueProductNames]);
+
   const hasActiveFilters =
-    selectedCustomerId !== 'all' ||
-    selectedArea !== 'all' ||
-    selectedProduct !== 'all' ||
+    selectedCustomerIds.length > 0 ||
+    selectedAreas.length > 0 ||
+    selectedProducts.length > 0 ||
     datePeriod !== 'all' ||
     searchQuery.trim().length > 0;
 
   const handleResetFilters = () => {
-    setSelectedCustomerId('all');
-    setSelectedArea('all');
-    setSelectedProduct('all');
+    setSelectedCustomerIds([]);
+    setSelectedAreas([]);
+    setSelectedProducts([]);
     setDatePeriod('all');
     setSearchQuery('');
     addToast('Filters reset to default', 'info');
@@ -146,27 +170,31 @@ export const ReportsView: React.FC = () => {
   // 1. Sales Report (Invoices)
   const filteredInvoices = useMemo(() => {
     return invoices.filter(inv => {
-      // Customer filter
-      if (selectedCustomerId !== 'all') {
-        if (inv.retailerId !== selectedCustomerId && inv.retailerName !== selectedCustomerId) {
+      // Customer multi-select filter
+      if (selectedCustomerIds.length > 0) {
+        if (!selectedCustomerIds.includes(inv.retailerId) && !selectedCustomerIds.includes(inv.retailerName)) {
           return false;
         }
       }
 
-      // Address / Area filter
-      if (selectedArea !== 'all') {
+      // Address / Area multi-select filter
+      if (selectedAreas.length > 0) {
         const retailer = retailers.find(r => r.id === inv.retailerId || r.businessName === inv.retailerName);
         const areaStr = (retailer?.area || '').toLowerCase();
         const addrStr = (retailer?.address || inv.retailerAddress || '').toLowerCase();
-        const target = selectedArea.toLowerCase();
-        if (!areaStr.includes(target) && !addrStr.includes(target)) return false;
+        const matchesArea = selectedAreas.some(area => {
+          const target = area.toLowerCase();
+          return areaStr.includes(target) || addrStr.includes(target);
+        });
+        if (!matchesArea) return false;
       }
 
-      // Product filter
-      if (selectedProduct !== 'all') {
+      // Product multi-select filter
+      if (selectedProducts.length > 0) {
         const hasProd = inv.items?.some(it =>
-          it.productName?.toLowerCase() === selectedProduct.toLowerCase() ||
-          it.productId === selectedProduct
+          selectedProducts.some(p =>
+            it.productName?.toLowerCase() === p.toLowerCase() || it.productId === p
+          )
         );
         if (!hasProd) return false;
       }
@@ -187,16 +215,17 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [invoices, selectedCustomerId, selectedArea, selectedProduct, datePeriod, searchQuery, retailers]);
+  }, [invoices, selectedCustomerIds, selectedAreas, selectedProducts, datePeriod, searchQuery, retailers]);
 
   // 2. Production Report (Batches)
   const filteredBatches = useMemo(() => {
     return batches.filter(b => {
-      // Product filter
-      if (selectedProduct !== 'all') {
-        if (b.productName?.toLowerCase() !== selectedProduct.toLowerCase() && b.productId !== selectedProduct) {
-          return false;
-        }
+      // Product multi-select filter
+      if (selectedProducts.length > 0) {
+        const matchesProd = selectedProducts.some(p =>
+          b.productName?.toLowerCase() === p.toLowerCase() || b.productId === p
+        );
+        if (!matchesProd) return false;
       }
 
       // Date period (by productionDate)
@@ -214,28 +243,35 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [batches, selectedProduct, datePeriod, searchQuery]);
+  }, [batches, selectedProducts, datePeriod, searchQuery]);
 
   // 3. Outstanding Dues Report (Retailers)
   const filteredOutstanding = useMemo(() => {
     return retailers.filter(r => {
-      // Customer filter
-      if (selectedCustomerId !== 'all' && r.id !== selectedCustomerId) return false;
-
-      // Address / Area filter
-      if (selectedArea !== 'all') {
-        const target = selectedArea.toLowerCase();
-        const areaStr = (r.area || '').toLowerCase();
-        const addrStr = (r.address || '').toLowerCase();
-        if (!areaStr.includes(target) && !addrStr.includes(target)) return false;
+      // Customer multi-select filter
+      if (selectedCustomerIds.length > 0 && !selectedCustomerIds.includes(r.id) && !selectedCustomerIds.includes(r.businessName)) {
+        return false;
       }
 
-      // Product filter: check if customer has purchased this product
-      if (selectedProduct !== 'all') {
+      // Address / Area multi-select filter
+      if (selectedAreas.length > 0) {
+        const areaStr = (r.area || '').toLowerCase();
+        const addrStr = (r.address || '').toLowerCase();
+        const matchesArea = selectedAreas.some(area => {
+          const target = area.toLowerCase();
+          return areaStr.includes(target) || addrStr.includes(target);
+        });
+        if (!matchesArea) return false;
+      }
+
+      // Product multi-select filter: check if customer has purchased any of the selected products
+      if (selectedProducts.length > 0) {
         const hasPurchased = invoices.some(
           inv =>
             (inv.retailerId === r.id || inv.retailerName === r.businessName) &&
-            inv.items?.some(it => it.productName?.toLowerCase() === selectedProduct.toLowerCase())
+            inv.items?.some(it =>
+              selectedProducts.some(p => it.productName?.toLowerCase() === p.toLowerCase() || it.productId === p)
+            )
         );
         if (!hasPurchased) return false;
       }
@@ -254,32 +290,35 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [retailers, selectedCustomerId, selectedArea, selectedProduct, searchQuery, invoices]);
+  }, [retailers, selectedCustomerIds, selectedAreas, selectedProducts, searchQuery, invoices]);
 
   // 4. Payment Collections Report (Payments)
   const filteredPayments = useMemo(() => {
     return payments.filter(p => {
-      // Customer filter
-      if (selectedCustomerId !== 'all') {
-        if (p.retailerId !== selectedCustomerId && p.retailerName !== selectedCustomerId) {
+      // Customer multi-select filter
+      if (selectedCustomerIds.length > 0) {
+        if (!selectedCustomerIds.includes(p.retailerId) && !selectedCustomerIds.includes(p.retailerName)) {
           return false;
         }
       }
 
-      // Area filter
-      if (selectedArea !== 'all') {
+      // Area multi-select filter
+      if (selectedAreas.length > 0) {
         const retailer = retailers.find(r => r.id === p.retailerId || r.businessName === p.retailerName);
-        const target = selectedArea.toLowerCase();
+        const target = selectedAreas.map(a => a.toLowerCase());
         const areaStr = (retailer?.area || '').toLowerCase();
         const addrStr = (retailer?.address || '').toLowerCase();
-        if (!areaStr.includes(target) && !addrStr.includes(target)) return false;
+        const matchesArea = target.some(t => areaStr.includes(t) || addrStr.includes(t));
+        if (!matchesArea) return false;
       }
 
-      // Product filter
-      if (selectedProduct !== 'all') {
+      // Product multi-select filter
+      if (selectedProducts.length > 0) {
         const linkedInv = invoices.find(inv => inv.invoiceNumber === p.invoiceNumber);
         if (linkedInv) {
-          const hasProd = linkedInv.items?.some(it => it.productName?.toLowerCase() === selectedProduct.toLowerCase());
+          const hasProd = linkedInv.items?.some(it =>
+            selectedProducts.some(prod => it.productName?.toLowerCase() === prod.toLowerCase() || it.productId === prod)
+          );
           if (!hasProd) return false;
         }
       }
@@ -301,31 +340,35 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [payments, selectedCustomerId, selectedArea, selectedProduct, datePeriod, searchQuery, retailers, invoices]);
+  }, [payments, selectedCustomerIds, selectedAreas, selectedProducts, datePeriod, searchQuery, retailers, invoices]);
 
   // 5. Expiry & Wastage Report (Alerts)
   const filteredExpiry = useMemo(() => {
     return expiryAlerts.filter(a => {
-      // Product filter
-      if (selectedProduct !== 'all') {
-        if (a.productName?.toLowerCase() !== selectedProduct.toLowerCase()) return false;
+      // Product multi-select filter
+      if (selectedProducts.length > 0) {
+        const matchesProd = selectedProducts.some(p => a.productName?.toLowerCase() === p.toLowerCase());
+        if (!matchesProd) return false;
       }
 
-      // Customer filter
-      if (selectedCustomerId !== 'all') {
+      // Customer multi-select filter
+      if (selectedCustomerIds.length > 0) {
         if (a.retailerName) {
-          const matched = retailers.find(r => r.id === selectedCustomerId || r.businessName === selectedCustomerId);
-          if (matched && a.retailerName !== matched.businessName) return false;
+          const matched = retailers.find(r => selectedCustomerIds.includes(r.id) || selectedCustomerIds.includes(r.businessName));
+          if (!matched || a.retailerName !== matched.businessName) return false;
         }
       }
 
-      // Area filter
-      if (selectedArea !== 'all' && a.retailerName) {
+      // Area multi-select filter
+      if (selectedAreas.length > 0 && a.retailerName) {
         const matched = retailers.find(r => r.businessName === a.retailerName);
-        const target = selectedArea.toLowerCase();
         const areaStr = (matched?.area || '').toLowerCase();
         const addrStr = (matched?.address || '').toLowerCase();
-        if (!areaStr.includes(target) && !addrStr.includes(target)) return false;
+        const matchesArea = selectedAreas.some(area => {
+          const target = area.toLowerCase();
+          return areaStr.includes(target) || addrStr.includes(target);
+        });
+        if (!matchesArea) return false;
       }
 
       // Free text search
@@ -341,24 +384,28 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [expiryAlerts, selectedProduct, selectedCustomerId, selectedArea, searchQuery, retailers]);
+  }, [expiryAlerts, selectedProducts, selectedCustomerIds, selectedAreas, searchQuery, retailers]);
 
   // 6. Stock Movements Report
   const filteredMovements = useMemo(() => {
     return stockMovements.filter(m => {
-      // Product filter
-      if (selectedProduct !== 'all') {
-        if (m.productName?.toLowerCase() !== selectedProduct.toLowerCase() && m.productId !== selectedProduct) {
-          return false;
-        }
+      // Product multi-select filter
+      if (selectedProducts.length > 0) {
+        const matchesProd = selectedProducts.some(p =>
+          m.productName?.toLowerCase() === p.toLowerCase() || m.productId === p
+        );
+        if (!matchesProd) return false;
       }
 
-      // Area / Location filter
-      if (selectedArea !== 'all') {
-        const target = selectedArea.toLowerCase();
+      // Area / Location multi-select filter
+      if (selectedAreas.length > 0) {
         const fromStr = (m.fromLocation || '').toLowerCase();
         const toStr = (m.toLocation || '').toLowerCase();
-        if (!fromStr.includes(target) && !toStr.includes(target)) return false;
+        const matchesArea = selectedAreas.some(area => {
+          const target = area.toLowerCase();
+          return fromStr.includes(target) || toStr.includes(target);
+        });
+        if (!matchesArea) return false;
       }
 
       // Date period
@@ -378,7 +425,7 @@ export const ReportsView: React.FC = () => {
 
       return true;
     });
-  }, [stockMovements, selectedProduct, selectedArea, datePeriod, searchQuery]);
+  }, [stockMovements, selectedProducts, selectedAreas, datePeriod, searchQuery]);
 
   // 7. Inventory Stock (Derived from batches)
   const filteredInventory = useMemo(() => {
@@ -408,10 +455,17 @@ export const ReportsView: React.FC = () => {
   // ---------------------------------------------------------------------------
   const handleExportCSV = () => {
     const nowStr = new Date().toLocaleString('en-IN');
-    const customerObj = retailers.find(r => r.id === selectedCustomerId || r.businessName === selectedCustomerId);
-    const customerLabel = customerObj ? customerObj.businessName : selectedCustomerId === 'all' ? 'All Customers' : selectedCustomerId;
-    const areaLabel = selectedArea === 'all' ? 'All Areas / Addresses' : selectedArea;
-    const productLabel = selectedProduct === 'all' ? 'All Products' : selectedProduct;
+    const customerLabel = selectedCustomerIds.length === 0
+      ? 'All Customers'
+      : selectedCustomerIds
+          .map(cid => retailers.find(r => r.id === cid)?.businessName || cid)
+          .join('; ');
+    const areaLabel = selectedAreas.length === 0
+      ? 'All Areas / Addresses'
+      : selectedAreas.join('; ');
+    const productLabel = selectedProducts.length === 0
+      ? 'All Products'
+      : selectedProducts.join('; ');
     const periodLabels: Record<DatePeriod, string> = {
       all: 'Complete History',
       today: 'Today',
@@ -565,65 +619,35 @@ export const ReportsView: React.FC = () => {
 
         {/* Filter Inputs Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
-          {/* Customer Name Filter */}
-          <div className="space-y-1">
-            <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1">
-              <User className="w-3 h-3 text-slate-500" />
-              <span>Customer Name</span>
-            </label>
-            <select
-              value={selectedCustomerId}
-              onChange={e => setSelectedCustomerId(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none transition-all cursor-pointer font-medium"
-            >
-              <option value="all">All Customers ({retailers.length})</option>
-              {sortedRetailers.map(r => (
-                <option key={r.id} value={r.id}>
-                  {r.businessName} {r.area ? `(${r.area})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Customer Name Multi-Select */}
+          <MultiSelectFilter
+            label="Customer Name"
+            icon={<User className="w-3 h-3 text-slate-500" />}
+            options={customerOptions}
+            selectedValues={selectedCustomerIds}
+            onChange={setSelectedCustomerIds}
+            placeholder="All Customers"
+          />
 
-          {/* Address / Area Filter */}
-          <div className="space-y-1">
-            <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-slate-500" />
-              <span>Address / Area</span>
-            </label>
-            <select
-              value={selectedArea}
-              onChange={e => setSelectedArea(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none transition-all cursor-pointer font-medium"
-            >
-              <option value="all">All Areas / Addresses</option>
-              {uniqueAreas.map(area => (
-                <option key={area} value={area}>
-                  {area}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Address / Area Multi-Select */}
+          <MultiSelectFilter
+            label="Address / Area"
+            icon={<MapPin className="w-3 h-3 text-slate-500" />}
+            options={areaOptions}
+            selectedValues={selectedAreas}
+            onChange={setSelectedAreas}
+            placeholder="All Areas"
+          />
 
-          {/* Product Filter */}
-          <div className="space-y-1">
-            <label className="block text-[11px] font-bold text-slate-700 flex items-center gap-1">
-              <Package className="w-3 h-3 text-slate-500" />
-              <span>Product</span>
-            </label>
-            <select
-              value={selectedProduct}
-              onChange={e => setSelectedProduct(e.target.value)}
-              className="w-full p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:bg-white focus:border-blue-600 focus:outline-none transition-all cursor-pointer font-medium"
-            >
-              <option value="all">All Products ({uniqueProductNames.length})</option>
-              {uniqueProductNames.map(pName => (
-                <option key={pName} value={pName}>
-                  {pName}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* Product Multi-Select */}
+          <MultiSelectFilter
+            label="Product"
+            icon={<Package className="w-3 h-3 text-slate-500" />}
+            options={productOptions}
+            selectedValues={selectedProducts}
+            onChange={setSelectedProducts}
+            placeholder="All Products"
+          />
 
           {/* Date Period Filter */}
           <div className="space-y-1">
@@ -660,6 +684,7 @@ export const ReportsView: React.FC = () => {
               />
               {searchQuery && (
                 <button
+                  type="button"
                   onClick={() => setSearchQuery('')}
                   className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                 >
@@ -674,34 +699,92 @@ export const ReportsView: React.FC = () => {
         {hasActiveFilters && (
           <div className="flex items-center gap-2 pt-2 border-t border-slate-100 flex-wrap text-[11px]">
             <span className="font-semibold text-slate-500">Active Criteria:</span>
-            {selectedCustomerId !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold">
-                <span>Customer: {sortedRetailers.find(r => r.id === selectedCustomerId)?.businessName || selectedCustomerId}</span>
-                <button onClick={() => setSelectedCustomerId('all')} className="hover:text-blue-900">✕</button>
+
+            {/* Customer Chips */}
+            {selectedCustomerIds.map(cid => {
+              const matched = retailers.find(r => r.id === cid);
+              const labelName = matched ? matched.businessName : cid;
+              return (
+                <span
+                  key={`chip-cust-${cid}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 font-semibold"
+                >
+                  <span>Customer: {labelName}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCustomerIds(prev => prev.filter(id => id !== cid))}
+                    className="hover:text-blue-900 p-0.5 cursor-pointer"
+                    title="Remove this customer"
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+
+            {/* Area Chips */}
+            {selectedAreas.map(area => (
+              <span
+                key={`chip-area-${area}`}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold"
+              >
+                <span>Area: {area}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedAreas(prev => prev.filter(a => a !== area))}
+                  className="hover:text-indigo-900 p-0.5 cursor-pointer"
+                  title="Remove this area"
+                >
+                  ✕
+                </button>
               </span>
-            )}
-            {selectedArea !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-semibold">
-                <span>Area: {selectedArea}</span>
-                <button onClick={() => setSelectedArea('all')} className="hover:text-indigo-900">✕</button>
+            ))}
+
+            {/* Product Chips */}
+            {selectedProducts.map(pName => (
+              <span
+                key={`chip-prod-${pName}`}
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold"
+              >
+                <span>Product: {pName}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedProducts(prev => prev.filter(p => p !== pName))}
+                  className="hover:text-emerald-900 p-0.5 cursor-pointer"
+                  title="Remove this product"
+                >
+                  ✕
+                </button>
               </span>
-            )}
-            {selectedProduct !== 'all' && (
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold">
-                <span>Product: {selectedProduct}</span>
-                <button onClick={() => setSelectedProduct('all')} className="hover:text-emerald-900">✕</button>
-              </span>
-            )}
+            ))}
+
+            {/* Period Chip */}
             {datePeriod !== 'all' && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
                 <span>Period: {datePeriod}</span>
-                <button onClick={() => setDatePeriod('all')} className="hover:text-amber-900">✕</button>
+                <button
+                  type="button"
+                  onClick={() => setDatePeriod('all')}
+                  className="hover:text-amber-900 p-0.5 cursor-pointer"
+                  title="Reset date period"
+                >
+                  ✕
+                </button>
               </span>
             )}
+
+            {/* Search Query Chip */}
             {searchQuery && (
               <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 font-semibold">
                 <span>Search: "{searchQuery}"</span>
-                <button onClick={() => setSearchQuery('')} className="hover:text-slate-900">✕</button>
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="hover:text-slate-900 p-0.5 cursor-pointer"
+                  title="Clear search"
+                >
+                  ✕
+                </button>
               </span>
             )}
           </div>
