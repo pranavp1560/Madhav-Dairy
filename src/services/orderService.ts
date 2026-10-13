@@ -580,6 +580,24 @@ export const orderService = {
     return data;
   },
 
+  async generateInvoiceForOrder(orderId: string, userId?: string) {
+    const { data, error } = await supabase.rpc('generate_invoice_for_order', {
+      p_order_id: orderId,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async bulkGenerateInvoices(orderIds: string[], userId?: string) {
+    const { data, error } = await supabase.rpc('bulk_generate_invoices', {
+      p_order_ids: orderIds,
+      p_user_id: userId || null,
+    });
+    if (error) throw error;
+    return data;
+  },
+
   async dispatchOrder(orderId: string, userId?: string) {
     const { data, error } = await supabase.rpc('dispatch_order_and_create_invoice', {
       p_order_id: orderId,

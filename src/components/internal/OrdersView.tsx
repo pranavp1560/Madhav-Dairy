@@ -20,6 +20,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     updateOrderStatus, 
     confirmOrder, 
     dispatchOrder, 
+    generateInvoiceForOrder,
+    bulkGenerateInvoices,
     bulkConfirmOrders, 
     bulkDispatchOrders,
     setInternalView,
@@ -32,9 +34,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const [selectedStatus, setSelectedStatus] = useState('all');
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
 
-  // Bulk selection state
+  // Bulk selection & operation states
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+  const [generatingInvoiceId, setGeneratingInvoiceId] = useState<string | null>(null);
+  const [isGeneratingDrawerInvoice, setIsGeneratingDrawerInvoice] = useState(false);
 
   const handleOpenCreateOrder = () => {
     navigateToCreateOrder(null);
@@ -73,6 +77,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   // Selected orders grouped by status for bulk actions
   const selectedPendingIds = filteredOrders.filter(o => selectedOrderIds.includes(o.id) && o.status === 'pending').map(o => o.id);
   const selectedConfirmedIds = filteredOrders.filter(o => selectedOrderIds.includes(o.id) && o.status === 'confirmed').map(o => o.id);
+  const selectedConfirmedWithoutInvoiceIds = filteredOrders
+    .filter(o => selectedOrderIds.includes(o.id) && o.status === 'confirmed' && !o.invoiceId)
+    .map(o => o.id);
 
   const handleBulkConfirm = async () => {
     if (selectedPendingIds.length === 0) return;
@@ -85,12 +92,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     }
   };
 
-  const handleBulkDispatch = async () => {
-    if (selectedConfirmedIds.length === 0) return;
+  const handleBulkGenerateInvoices = async () => {
+    if (selectedConfirmedWithoutInvoiceIds.length === 0) return;
     setIsBulkProcessing(true);
     try {
-      await bulkDispatchOrders(selectedConfirmedIds);
-      setSelectedOrderIds(prev => prev.filter(id => !selectedConfirmedIds.includes(id)));
+      await bulkGenerateInvoices(selectedConfirmedWithoutInvoiceIds);
+      setSelectedOrderIds(prev => prev.filter(id => !selectedConfirmedWithoutInvoiceIds.includes(id)));
     } finally {
       setIsBulkProcessing(false);
     }
@@ -115,7 +122,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
         <div>
           <h2 className="text-base font-bold text-slate-900">Retailer Sales Orders</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Operational Lifecycle: <span className="font-semibold text-amber-700">Pending</span> &rarr; <span className="font-semibold text-blue-700">Confirmed</span> &rarr; <span className="font-semibold text-sky-700">Dispatched</span> (Auto-Generates Invoice)
+            Operational Lifecycle: <span className="font-semibold text-amber-700">Pending</span> &rarr; <span className="font-semibold text-blue-700">Confirmed</span> &rarr; <span className="font-semibold text-sky-700">Generate Invoice (Ready)</span> &rarr; <span className="font-semibold text-indigo-700">Delivery Trip (Dispatched)</span> &rarr; <span className="font-semibold text-emerald-700">Delivered</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -192,14 +199,14 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
               </button>
             )}
 
-            {selectedConfirmedIds.length > 0 && (
+            {selectedConfirmedWithoutInvoiceIds.length > 0 && (
               <button
-                onClick={handleBulkDispatch}
+                onClick={handleBulkGenerateInvoices}
                 disabled={isBulkProcessing}
                 className="px-3 py-1.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
               >
-                <Truck className="w-3.5 h-3.5" />
-                <span>Bulk Dispatch & Invoice ({selectedConfirmedIds.length})</span>
+                <FileText className="w-3.5 h-3.5" />
+                <span>Bulk Generate Invoices ({selectedConfirmedWithoutInvoiceIds.length})</span>
               </button>
             )}
 
@@ -338,18 +345,37 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                             </button>
                           )}
 
-                          {order.status === 'confirmed' && (
+                          {order.status === 'confirmed' && !order.invoiceId && (
                             <button
-                              onClick={() => dispatchOrder(order.id)}
-                              className="px-2.5 py-1 bg-sky-50 hover:bg-sky-600 hover:text-white text-sky-700 border border-sky-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1"
-                              title="Dispatch order and automatically generate invoice"
+                              onClick={async () => {
+                                setGeneratingInvoiceId(order.id);
+                                try {
+                                  await generateInvoiceForOrder(order.id);
+                                } finally {
+                                  setGeneratingInvoiceId(null);
+                                }
+                              }}
+                              disabled={generatingInvoiceId === order.id}
+                              className="px-2.5 py-1 bg-sky-50 hover:bg-sky-600 hover:text-white text-sky-700 border border-sky-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1 disabled:opacity-50"
+                              title="Generate Invoice in Ready status"
                             >
-                              <Truck className="w-3 h-3" />
-                              <span>Dispatch & Invoice</span>
+                              <FileText className="w-3 h-3" />
+                              <span>{generatingInvoiceId === order.id ? 'Generating...' : 'Generate Invoice'}</span>
                             </button>
                           )}
 
-                          {order.status === 'dispatched' && (
+                          {order.status === 'confirmed' && order.invoiceId && (
+                            <button
+                              onClick={() => handleViewInvoice(order)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1"
+                              title={`View Invoice ${order.invoiceNumber || ''} (Ready)`}
+                            >
+                              <FileText className="w-3 h-3" />
+                              <span>{order.invoiceNumber ? `${order.invoiceNumber} (Ready)` : 'View Invoice'}</span>
+                            </button>
+                          )}
+
+                          {(order.status === 'dispatched' || (order.status as string) === 'delivered') && (
                             <button
                               onClick={() => handleViewInvoice(order)}
                               className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-600 hover:text-white text-emerald-700 border border-emerald-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1"
@@ -539,22 +565,41 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                 </Button>
               )}
 
-              {viewingOrder.status === 'confirmed' && (
+              {viewingOrder.status === 'confirmed' && !viewingOrder.invoiceId && (
                 <Button
                   variant="primary"
                   size="sm"
-                  icon={<Truck className="w-3.5 h-3.5" />}
+                  icon={<FileText className="w-3.5 h-3.5" />}
+                  disabled={isGeneratingDrawerInvoice}
                   onClick={async () => {
-                    const res = await dispatchOrder(viewingOrder.id);
-                    setViewingOrder(prev => prev ? { 
-                      ...prev, 
-                      status: 'dispatched',
-                      invoiceId: res.invoiceId,
-                      invoiceNumber: res.invoiceNumber 
-                    } : null);
+                    setIsGeneratingDrawerInvoice(true);
+                    try {
+                      const res = await generateInvoiceForOrder(viewingOrder.id);
+                      setViewingOrder(prev => prev ? { 
+                        ...prev, 
+                        invoiceId: res.invoiceId,
+                        invoiceNumber: res.invoiceNumber 
+                      } : null);
+                    } finally {
+                      setIsGeneratingDrawerInvoice(false);
+                    }
                   }}
                 >
-                  Dispatch & Generate Invoice
+                  {isGeneratingDrawerInvoice ? 'Generating...' : 'Generate Invoice'}
+                </Button>
+              )}
+
+              {viewingOrder.status === 'confirmed' && viewingOrder.invoiceId && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={<FileText className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setViewingOrder(null);
+                    handleViewInvoice(viewingOrder);
+                  }}
+                >
+                  View Invoice ({viewingOrder.invoiceNumber || 'Ready'})
                 </Button>
               )}
             </div>

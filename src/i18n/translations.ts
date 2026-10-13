@@ -207,6 +207,8 @@ export interface Translations {
       pricing: string;
       paymentDetails: string;
       settings: string;
+      deliveryUnits: string;
+      driverManagement: string;
     };
     dashboard: {
       title: string;
@@ -446,6 +448,8 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         pricing: 'Channel Pricing',
         paymentDetails: 'Payment Details',
         settings: 'Settings',
+        deliveryUnits: 'Delivery Units',
+        driverManagement: 'Driver Management',
       },
       dashboard: {
         title: 'Daily Operations Overview',
@@ -683,6 +687,8 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         pricing: 'चॅनलनुसार दर',
         paymentDetails: 'पेमेंट तपशील',
         settings: 'सेटिंग्ज',
+        deliveryUnits: 'डिलिव्हरी युनिट्स',
+        driverManagement: 'ड्रायव्हर व्यवस्थापन',
       },
       dashboard: {
         title: 'दैनिक व्यवसाय आढावा',
@@ -920,6 +926,8 @@ export const TRANSLATIONS: Record<Language, Translations> = {
         pricing: 'चैनल-वार मूल्य निर्धारण',
         paymentDetails: 'भुगतान विवरण',
         settings: 'सेटिंग्स',
+        deliveryUnits: 'डिलीवरी यूनिट्स',
+        driverManagement: 'ड्राइवर प्रबंधन',
       },
       dashboard: {
         title: 'दैनिक व्यवसाय डैशबोर्ड',

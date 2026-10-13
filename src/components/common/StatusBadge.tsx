@@ -90,6 +90,8 @@ export const StatusBadge: React.FC<StatusBadgeProps> = ({
     switch (status) {
       case 'ready':
         return <span className={`${sizeClasses} rounded-full font-semibold bg-sky-50 text-sky-700 border border-sky-200`}>Ready</span>;
+      case 'dispatched':
+        return <span className={`${sizeClasses} rounded-full font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200`}>Dispatched</span>;
       case 'delivered':
         return <span className={`${sizeClasses} rounded-full font-semibold bg-blue-50 text-blue-700 border border-blue-200`}>Delivered</span>;
       case 'open_payment':

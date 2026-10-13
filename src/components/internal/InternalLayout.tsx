@@ -25,6 +25,8 @@ import { SalesChannelsView } from './SalesChannelsView';
 import { ProductPricingView } from './ProductPricingView';
 import { PaymentDetailsView } from './PaymentDetailsView';
 import { SettingsView } from './SettingsView';
+import { DeliveryUnitsView } from './DeliveryUnitsView';
+import { DriverManagementView } from './DriverManagementView';
 
 // Modals & Full-Page Views
 import { CreateBatchModal } from './CreateBatchModal';
@@ -122,6 +124,13 @@ export const InternalLayout: React.FC = () => {
             onOpenRecordPayment={() => handleOpenRecordPayment()}
           />
         );
+      case 'delivery_units':
+      case 'delivery':
+        return <DeliveryUnitsView />;
+      case 'driver_management':
+      case 'delivery_trips':
+      case 'driver-management':
+        return <DriverManagementView />;
       case 'customers':
       case 'retailers':
         return (

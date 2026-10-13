@@ -10,6 +10,7 @@ export const invoiceService = {
         id,
         invoice_number,
         order_id,
+        delivery_trip_id,
         customer_id,
         invoice_date,
         due_date,
@@ -22,6 +23,10 @@ export const invoiceService = {
         delivered_by,
         settled_at,
         settled_by,
+        delivery_trips(
+          trip_number,
+          status
+        ),
         orders(
           order_number
         ),
@@ -89,6 +94,8 @@ export const invoiceService = {
         invoiceNumber: inv.invoice_number,
         orderId: inv.order_id || undefined,
         orderNumber: inv.orders?.order_number || undefined,
+        deliveryTripId: inv.delivery_trip_id || undefined,
+        deliveryTripNumber: (Array.isArray(inv.delivery_trips) ? inv.delivery_trips[0]?.trip_number : inv.delivery_trips?.trip_number) || undefined,
         retailerId: inv.customer_id,
         retailerName: inv.customers?.business_name || 'Retailer Customer',
         retailerGstin: inv.customers?.gstin || '27AABCM9124K1Z0',

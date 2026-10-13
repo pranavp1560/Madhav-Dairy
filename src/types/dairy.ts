@@ -215,13 +215,15 @@ export interface InvoiceItem {
   amount: number;
 }
 
-export type InvoiceStatus = 'ready' | 'delivered' | 'open_payment' | 'settled' | 'cancelled';
+export type InvoiceStatus = 'ready' | 'dispatched' | 'delivered' | 'open_payment' | 'settled' | 'cancelled';
 
 export interface Invoice {
   id: string;
   invoiceNumber: string; // e.g. "INV-1025"
   orderId?: string;
   orderNumber?: string;
+  deliveryTripId?: string;
+  deliveryTripNumber?: string;
   retailerId: string;
   retailerName: string;
   retailerGstin: string;
@@ -240,6 +242,74 @@ export interface Invoice {
   deliveredBy?: string;
   settledAt?: string;
   settledBy?: string;
+}
+
+export interface DeliveryUnit {
+  id: string;
+  organizationId?: string;
+  chalanNumber: string;
+  name: string;
+  vehicleNumber: string;
+  driverName: string;
+  driverPhone?: string;
+  outTime?: string;
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
+  tripsCount?: number;
+}
+
+export type DeliveryTripStatus = 'assigned' | 'dispatched' | 'completed' | 'cancelled';
+
+export interface DeliveryTripInvoiceItem {
+  id: string;
+  invoiceId: string;
+  invoiceNumber: string;
+  orderId?: string;
+  orderNumber?: string;
+  retailerId: string;
+  retailerName: string;
+  retailerAddress: string;
+  invoiceDate: string;
+  totalAmount: number;
+  status: InvoiceStatus;
+  items: {
+    productId?: string;
+    productName: string;
+    packSize?: string;
+    unit: string;
+    quantity: number;
+    rate: number;
+    lineTotal: number;
+  }[];
+}
+
+export interface DeliveryTrip {
+  id: string;
+  organizationId?: string;
+  tripNumber: string;
+  deliveryUnitId: string;
+  deliveryUnitName?: string;
+  vehicleNumber: string;
+  driverName: string;
+  driverPhone?: string;
+  status: DeliveryTripStatus;
+  outTime?: string;
+  assignedAt: string;
+  assignedBy?: string;
+  assignedByName?: string;
+  completedAt?: string;
+  completedBy?: string;
+  completedByName?: string;
+  notes?: string;
+  invoicesCount: number;
+  assignedInvoiceCount?: number;
+  totalAmount?: number;
+  invoices?: DeliveryTripInvoiceItem[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export type PaymentMethod = 'cash' | 'upi' | 'bank_transfer' | 'cheque' | 'credit' | 'other';

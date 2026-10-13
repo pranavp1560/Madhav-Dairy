@@ -30,7 +30,9 @@ import {
   InvoiceAllocationInput,
   RecordCustomerPaymentResult,
   BusinessPaymentMethod,
-  CustomerPaymentSubmission
+  CustomerPaymentSubmission,
+  DeliveryUnit,
+  DeliveryTrip
 } from '../types/dairy';
 import {
   authService,
@@ -40,6 +42,7 @@ import {
   invoiceService,
   paymentService,
   paymentMethodService,
+  deliveryService,
   ledgerService,
   inventoryService,
   rawMaterialService,
@@ -359,11 +362,44 @@ interface DairyContextType {
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   confirmOrder: (orderId: string) => Promise<void>;
+  generateInvoiceForOrder: (orderId: string) => Promise<{ invoiceId?: string; invoiceNumber?: string }>;
+  bulkGenerateInvoices: (orderIds: string[]) => Promise<{ generated_count?: number; skipped_count?: number; failed_count?: number }>;
   dispatchOrder: (orderId: string) => Promise<{ invoiceId?: string; invoiceNumber?: string }>;
   bulkConfirmOrders: (orderIds: string[]) => Promise<{ confirmed_count?: number; skipped_count?: number }>;
   bulkDispatchOrders: (orderIds: string[]) => Promise<{ dispatched_count?: number; skipped_count?: number; failed_count?: number }>;
   markInvoiceDelivered: (invoiceId: string) => Promise<void>;
   bulkDeliverInvoices: (invoiceIds: string[]) => Promise<{ delivered_count?: number; skipped_count?: number }>;
+
+  // Delivery Unit & Driver Management Actions
+  deliveryUnits: DeliveryUnit[];
+  deliveryTrips: DeliveryTrip[];
+  loadDeliveryUnits: () => Promise<void>;
+  loadDeliveryTrips: () => Promise<void>;
+  createDeliveryUnit: (data: {
+    name: string;
+    vehicleNumber: string;
+    driverName: string;
+    driverPhone?: string;
+    outTime?: string;
+    isActive?: boolean;
+  }) => Promise<DeliveryUnit>;
+  updateDeliveryUnit: (id: string, data: {
+    name?: string;
+    vehicleNumber?: string;
+    driverName?: string;
+    driverPhone?: string;
+    outTime?: string;
+    isActive?: boolean;
+  }) => Promise<void>;
+  deleteDeliveryUnit: (id: string) => Promise<void>;
+  toggleDeliveryUnitActive: (id: string, isActive: boolean) => Promise<void>;
+  assignDeliveryTrip: (params: {
+    deliveryUnitId: string;
+    invoiceIds: string[];
+    outTime?: string;
+    notes?: string;
+  }) => Promise<{ trip_id: string; trip_number: string; assigned_count: number }>;
+  completeDeliveryTrip: (tripId: string) => Promise<{ delivered_invoices_count: number }>;
   allocateInvoicePayment: (params: {
     invoiceId: string;
     amount: number;
@@ -484,6 +520,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [skuChannelPrices, setSkuChannelPrices] = useState<SkuChannelPrice[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<BusinessPaymentMethod[]>([]);
   const [paymentSubmissions, setPaymentSubmissions] = useState<CustomerPaymentSubmission[]>([]);
+  const [deliveryUnits, setDeliveryUnits] = useState<DeliveryUnit[]>([]);
+  const [deliveryTrips, setDeliveryTrips] = useState<DeliveryTrip[]>([]);
 
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -549,6 +587,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSkuChannelPrices([]);
         setPaymentMethods([]);
         setPaymentSubmissions([]);
+        setDeliveryUnits([]);
+        setDeliveryTrips([]);
         return;
       }
 
@@ -617,7 +657,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           prices,
           skuPrs,
           pMethods,
-          pSubs
+          pSubs,
+          dUnits,
+          dTrips
         ] = await Promise.all([
           customerService.fetchCustomers(),
           orderService.fetchOrders(),
@@ -641,6 +683,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           productService.fetchSkuChannelPrices(),
           paymentMethodService.fetchPaymentMethods(),
           paymentMethodService.fetchPaymentSubmissions(),
+          deliveryService.fetchDeliveryUnits(),
+          deliveryService.fetchDeliveryTrips(),
         ]);
 
         setRetailers(custs);
@@ -665,6 +709,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSkuChannelPrices(skuPrs);
         setPaymentMethods(pMethods);
         setPaymentSubmissions(pSubs);
+        setDeliveryUnits(dUnits);
+        setDeliveryTrips(dTrips);
       }
     } catch (err: any) {
       console.error('Data refresh error:', err);
@@ -1750,6 +1796,176 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Generate Invoice for Confirmed Order (Module 2.1)
+  const generateInvoiceForOrder = async (orderId: string) => {
+    try {
+      const res = await orderService.generateInvoiceForOrder(orderId, currentUser?.id);
+      const [updatedOrders, updatedInvoices] = await Promise.all([
+        orderService.fetchOrders(),
+        invoiceService.fetchInvoices(),
+      ]);
+      setOrders(updatedOrders);
+      setInvoices(updatedInvoices);
+      addToast(`Invoice ${res.invoice_number || ''} generated successfully in Ready status!`, 'success');
+      return { invoiceId: res.invoice_id, invoiceNumber: res.invoice_number };
+    } catch (err: any) {
+      addToast(`Failed to generate invoice: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const bulkGenerateInvoices = async (orderIds: string[]) => {
+    try {
+      const res = await orderService.bulkGenerateInvoices(orderIds, currentUser?.id);
+      const [updatedOrders, updatedInvoices] = await Promise.all([
+        orderService.fetchOrders(),
+        invoiceService.fetchInvoices(),
+      ]);
+      setOrders(updatedOrders);
+      setInvoices(updatedInvoices);
+      addToast(`${res.generated_count} invoice(s) generated in Ready status!`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to bulk generate invoices: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Delivery Unit Management Actions (Module 1)
+  const loadDeliveryUnits = async () => {
+    try {
+      const units = await deliveryService.fetchDeliveryUnits();
+      setDeliveryUnits(units);
+    } catch (err: any) {
+      console.error('Failed to load delivery units:', err);
+    }
+  };
+
+  const loadDeliveryTrips = async () => {
+    try {
+      const trips = await deliveryService.fetchDeliveryTrips();
+      setDeliveryTrips(trips);
+    } catch (err: any) {
+      console.error('Failed to load delivery trips:', err);
+    }
+  };
+
+  const createDeliveryUnit = async (params: {
+    name: string;
+    vehicleNumber: string;
+    driverName: string;
+    driverPhone?: string;
+    outTime?: string;
+    isActive?: boolean;
+  }) => {
+    try {
+      const newUnit = await deliveryService.createDeliveryUnit({
+        ...params,
+        userId: currentUser?.id,
+      });
+      setDeliveryUnits(prev => [newUnit, ...prev]);
+      addToast(`Delivery Unit "${newUnit.name}" created with Chalan #${newUnit.chalanNumber}!`, 'success');
+      return newUnit;
+    } catch (err: any) {
+      addToast(`Failed to create delivery unit: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateDeliveryUnit = async (id: string, params: {
+    name?: string;
+    vehicleNumber?: string;
+    driverName?: string;
+    driverPhone?: string;
+    outTime?: string;
+    isActive?: boolean;
+  }) => {
+    try {
+      await deliveryService.updateDeliveryUnit(id, {
+        ...params,
+        userId: currentUser?.id,
+      });
+      const updated = await deliveryService.fetchDeliveryUnits();
+      setDeliveryUnits(updated);
+      addToast('Delivery Unit updated successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to update delivery unit: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteDeliveryUnit = async (id: string) => {
+    try {
+      await deliveryService.deleteDeliveryUnit(id);
+      setDeliveryUnits(prev => prev.filter(u => u.id !== id));
+      addToast('Delivery Unit deleted successfully!', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Cannot delete delivery unit', 'error');
+      throw err;
+    }
+  };
+
+  const toggleDeliveryUnitActive = async (id: string, isActive: boolean) => {
+    try {
+      await deliveryService.toggleDeliveryUnitActive(id, isActive);
+      setDeliveryUnits(prev => prev.map(u => u.id === id ? { ...u, isActive } : u));
+      addToast(`Delivery Unit ${isActive ? 'activated' : 'deactivated'} successfully!`, 'info');
+    } catch (err: any) {
+      addToast(`Failed to update unit status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Delivery Trip Assignment & Completion Actions (Module 3.4 & 4.3)
+  const assignDeliveryTrip = async (params: {
+    deliveryUnitId: string;
+    invoiceIds: string[];
+    outTime?: string;
+    notes?: string;
+  }) => {
+    try {
+      const res = await deliveryService.assignDeliveryTrip({
+        ...params,
+        userId: currentUser?.id,
+      });
+      const [updatedInvoices, updatedOrders, updatedTrips, updatedUnits] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        orderService.fetchOrders(),
+        deliveryService.fetchDeliveryTrips(),
+        deliveryService.fetchDeliveryUnits(),
+      ]);
+      setInvoices(updatedInvoices);
+      setOrders(updatedOrders);
+      setDeliveryTrips(updatedTrips);
+      setDeliveryUnits(updatedUnits);
+      addToast(`Trip #${res.trip_number} assigned! ${res.assigned_count} invoice(s) marked Dispatched.`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to assign delivery trip: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const completeDeliveryTrip = async (tripId: string) => {
+    try {
+      const res = await deliveryService.completeDeliveryTrip(tripId, currentUser?.id);
+      const [updatedInvoices, updatedOrders, updatedTrips] = await Promise.all([
+        invoiceService.fetchInvoices(),
+        orderService.fetchOrders(),
+        deliveryService.fetchDeliveryTrips(),
+      ]);
+      setInvoices(updatedInvoices);
+      setOrders(updatedOrders);
+      setDeliveryTrips(updatedTrips);
+      await refreshExpiryData();
+      addToast(`Trip marked as completed! ${res.delivered_invoices_count} invoice(s) updated to Delivered.`, 'success');
+      return res;
+    } catch (err: any) {
+      addToast(`Failed to complete delivery trip: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   const allocateInvoicePayment = async (params: {
     invoiceId: string;
     amount: number;
@@ -2295,11 +2511,25 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         registerRetailer,
         updateOrderStatus,
         confirmOrder,
+        generateInvoiceForOrder,
+        bulkGenerateInvoices,
         dispatchOrder,
         bulkConfirmOrders,
         bulkDispatchOrders,
         markInvoiceDelivered,
         bulkDeliverInvoices,
+
+        // Delivery Units & Trips
+        deliveryUnits,
+        deliveryTrips,
+        loadDeliveryUnits,
+        loadDeliveryTrips,
+        createDeliveryUnit,
+        updateDeliveryUnit,
+        deleteDeliveryUnit,
+        toggleDeliveryUnitActive,
+        assignDeliveryTrip,
+        completeDeliveryTrip,
         allocateInvoicePayment,
         confirmInvoicePayment,
         bulkConfirmInvoicePayments,
