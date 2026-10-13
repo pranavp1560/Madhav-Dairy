@@ -4,7 +4,7 @@ import { getEffectiveOrgId } from './orgService';
 
 export const invoiceService = {
   async fetchInvoices(): Promise<Invoice[]> {
-    const { data: invs, error } = await supabase
+    let { data: invs, error } = await supabase
       .from('invoices')
       .select(`
         id,
@@ -54,6 +54,47 @@ export const invoiceService = {
         )
       `)
       .order('invoice_date', { ascending: false });
+
+    if (error && (error.message?.includes('delivery_trips') || error.message?.includes('schema cache'))) {
+      const retry = await supabase
+        .from('invoices')
+        .select(`
+          id,
+          invoice_number,
+          invoice_date,
+          due_date,
+          order_id,
+          subtotal,
+          tax_amount,
+          discount_amount,
+          total_amount,
+          status,
+          delivered_at,
+          delivered_by,
+          settled_at,
+          settled_by,
+          orders(order_number),
+          customers(business_name, gstin, address),
+          invoice_items(
+            id,
+            product_sku_id,
+            batch_id,
+            quantity,
+            rate,
+            discount_amount,
+            tax_percent,
+            tax_amount,
+            line_total,
+            batches(batch_number),
+            product_skus(pack_size, unit, products(id, name))
+          )
+        `)
+        .order('invoice_date', { ascending: false });
+      if (!retry.error && retry.data) {
+        invs = retry.data as any;
+        error = null;
+      }
+    }
 
     if (error) throw error;
 

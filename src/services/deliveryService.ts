@@ -28,7 +28,10 @@ export const deliveryService = {
       `)
       .order('created_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn('Could not fetch delivery_units:', error.message);
+      return [];
+    }
 
     return (data || []).map((u: any): DeliveryUnit => ({
       id: u.id,
@@ -224,7 +227,10 @@ export const deliveryService = {
       `)
       .order('assigned_at', { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+      console.warn('Could not fetch delivery_trips:', error.message);
+      return [];
+    }
 
     return (tripsData || []).map((t: any): DeliveryTrip => {
       const tripInvoices = t.delivery_trip_invoices || [];
