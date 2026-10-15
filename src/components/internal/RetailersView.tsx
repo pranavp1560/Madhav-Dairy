@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { Users, Search, Phone, MapPin, Eye, ArrowRight, CreditCard, UserPlus } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Eye, ArrowRight, CreditCard, UserPlus, UploadCloud } from 'lucide-react';
 import { AddCustomerModal } from './AddCustomerModal';
 
 interface RetailersViewProps {
   onSelectRetailer: (id: string) => void;
   onOpenRecordPayment: () => void;
+  onOpenImportCustomers?: () => void;
 }
 
 export const RetailersView: React.FC<RetailersViewProps> = ({
   onSelectRetailer,
   onOpenRecordPayment,
+  onOpenImportCustomers,
 }) => {
   const { retailers, salesChannels } = useDairy();
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,6 +49,15 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenImportCustomers && (
+            <button
+              onClick={onOpenImportCustomers}
+              className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+            >
+              <UploadCloud className="w-4 h-4 text-emerald-600" />
+              <span>Import Customers</span>
+            </button>
+          )}
           <button
             onClick={() => setIsAddCustomerOpen(true)}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"

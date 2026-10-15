@@ -742,3 +742,97 @@ export interface VendorAdvanceSummary {
   billsCount: number;
 }
 
+// Customer Import Module Types
+export type CustomerImportJobStatus =
+  | 'QUEUED'
+  | 'PROCESSING'
+  | 'COMPLETED'
+  | 'COMPLETED_WITH_ERRORS'
+  | 'FAILED'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'completed_with_errors'
+  | 'failed';
+
+export interface CustomerImportJob {
+  id: string;
+  organizationId: string;
+  jobNumber: string;
+  filename: string;
+  fileSizeBytes: number;
+  submittedById?: string;
+  submittedByName: string;
+  totalRecords: number;
+  processedRecords: number;
+  successfulRecords: number;
+  updatedRecords: number;
+  failedRecords: number;
+  status: CustomerImportJobStatus;
+  errorMessage?: string;
+  summaryMetadata?: Record<string, any>;
+  createdAt: string;
+  completedAt?: string;
+  updatedAt: string;
+}
+
+export type ValidationRowStatus = 'VALID' | 'WARNING' | 'FAILED';
+export type ValidationAction = 'CREATE' | 'UPDATE' | 'SKIP';
+
+export interface ValidationRow {
+  rowIndex: number;
+  status: ValidationRowStatus;
+  action: ValidationAction;
+  matchedCustomerId?: string;
+  customerCode?: string;
+  businessName: string;
+  ownerName: string;
+  mobile: string;
+  email?: string;
+  address: string;
+  area?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+  creditLimit?: number;
+  salesChannelName?: string;
+  openingBalance?: number;
+  validationErrors: string[];
+  validationWarnings: string[];
+  originalData?: Record<string, any>;
+}
+
+export interface ValidationReportSummary {
+  totalRows: number;
+  validRows: number;
+  warningRows: number;
+  failedRows: number;
+  newCustomers: number;
+  existingCustomers: number;
+}
+
+export interface CustomerImportRowResult {
+  id: string;
+  jobId: string;
+  rowIndex: number;
+  action: 'CREATE' | 'UPDATE' | 'SKIP' | 'create' | 'update' | 'skip';
+  customerId?: string;
+  businessName: string;
+  ownerName?: string;
+  mobile?: string;
+  email?: string;
+  address?: string;
+  area?: string;
+  city?: string;
+  state?: string;
+  pincode?: string;
+  gstin?: string;
+  creditLimit?: number;
+  salesChannelName?: string;
+  status: 'SUCCESS' | 'FAILED' | 'WARNING' | 'SKIPPED' | 'success' | 'failed' | 'warning' | 'skipped';
+  errorMessages: string[];
+  warningMessages: string[];
+  createdAt: string;
+}
+

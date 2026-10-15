@@ -36,6 +36,8 @@ import { Retailer360Modal } from './Retailer360Modal';
 import { RecordPaymentView } from './RecordPaymentView';
 import { CreateOrderView } from './CreateOrderView';
 import { AddExpenseModal } from './AddExpenseModal';
+import { ImportCustomersView } from './ImportCustomersView';
+import { ImportFeedView } from './ImportFeedView';
 
 export const InternalLayout: React.FC = () => {
   const {
@@ -137,6 +139,23 @@ export const InternalLayout: React.FC = () => {
           <RetailersView
             onSelectRetailer={id => setSelectedRetailerId(id)}
             onOpenRecordPayment={() => handleOpenRecordPayment()}
+            onOpenImportCustomers={() => setInternalView('import_customers')}
+          />
+        );
+      case 'import_customers':
+      case 'import-customers':
+        return (
+          <ImportCustomersView
+            onBack={() => setInternalView('customers')}
+            onGoToImportFeed={() => setInternalView('import_feed')}
+          />
+        );
+      case 'import_feed':
+      case 'import-feed':
+        return (
+          <ImportFeedView
+            onBack={() => setInternalView('customers')}
+            onOpenImportCustomers={() => setInternalView('import_customers')}
           />
         );
       case 'payments':
