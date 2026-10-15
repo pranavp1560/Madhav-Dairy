@@ -421,7 +421,14 @@ export const deliveryService = {
     const { data, error } = await supabase.rpc('assign_delivery_trip', {
       p_delivery_unit_id: params.deliveryUnitId,
       p_invoice_ids: params.invoiceIds,
-      p_out_time: params.outTime ? new Date(params.outTime).toISOString() : new Date().toISOString(),
+      p_out_time: (() => {
+        if (!params.outTime) return new Date().toISOString();
+        // outTime may be a time-only string like "06:00 AM" or "14:30".
+        // Combine with today's date so the Date constructor can parse it.
+        const todayDate = new Date().toDateString(); // e.g. "Mon Oct 13 2026"
+        const combined = new Date(`${todayDate} ${params.outTime}`);
+        return isNaN(combined.getTime()) ? new Date().toISOString() : combined.toISOString();
+      })(),
       p_notes: params.notes || null,
       p_user_id: params.userId || null,
     });

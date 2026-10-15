@@ -32,7 +32,11 @@ import {
   BusinessPaymentMethod,
   CustomerPaymentSubmission,
   DeliveryUnit,
-  DeliveryTrip
+  DeliveryTrip,
+  Supplier,
+  VendorAdvance,
+  VendorBill,
+  VendorAdvanceAdjustment
 } from '../types/dairy';
 import {
   authService,
@@ -43,6 +47,8 @@ import {
   paymentService,
   paymentMethodService,
   deliveryService,
+  supplierService,
+  vendorAdvanceService,
   ledgerService,
   inventoryService,
   rawMaterialService,
@@ -322,6 +328,45 @@ interface DairyContextType {
     referenceNumber: string;
   }) => Promise<Expense>;
 
+  // Vendor / Farmer Advance Tracking & Adjustments
+  suppliers: Supplier[];
+  vendorAdvances: VendorAdvance[];
+  vendorBills: VendorBill[];
+  vendorAdvanceAdjustments: VendorAdvanceAdjustment[];
+  recordVendorAdvance: (data: {
+    supplierId?: string;
+    vendorName: string;
+    amount: number;
+    paymentMethod: PaymentMethod;
+    advanceDate?: string;
+    referenceNumber?: string;
+    notes?: string;
+  }) => Promise<{ success: boolean; advanceId: string; advanceNumber: string }>;
+  createVendorBill: (data: {
+    supplierId?: string;
+    vendorName: string;
+    billNumber?: string;
+    billDate?: string;
+    dueDate?: string;
+    category?: string;
+    totalAmount: number;
+    notes?: string;
+  }) => Promise<{ success: boolean; billId: string; billNumber: string }>;
+  adjustVendorAdvanceAgainstBill: (data: {
+    advanceId: string;
+    billId: string;
+    adjustmentAmount: number;
+    adjustmentDate?: string;
+    notes?: string;
+  }) => Promise<{
+    success: boolean;
+    adjustmentId: string;
+    adjustmentNumber: string;
+    newAdvanceBalance: number;
+    newBillBalance: number;
+  }>;
+  refreshVendorAdvances: () => Promise<void>;
+
   addRawMaterialStock: (materialId: string, qty: number, reference: string, notes?: string) => Promise<void>;
   addRawMaterialPurchase: (data: {
     materialId?: string;
@@ -522,6 +567,10 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [paymentSubmissions, setPaymentSubmissions] = useState<CustomerPaymentSubmission[]>([]);
   const [deliveryUnits, setDeliveryUnits] = useState<DeliveryUnit[]>([]);
   const [deliveryTrips, setDeliveryTrips] = useState<DeliveryTrip[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [vendorAdvances, setVendorAdvances] = useState<VendorAdvance[]>([]);
+  const [vendorBills, setVendorBills] = useState<VendorBill[]>([]);
+  const [vendorAdvanceAdjustments, setVendorAdvanceAdjustments] = useState<VendorAdvanceAdjustment[]>([]);
 
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -659,7 +708,11 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           pMethods,
           pSubs,
           dUnits,
-          dTrips
+          dTrips,
+          sups,
+          vAdvs,
+          vBills,
+          vAdjs
         ] = await Promise.all([
           customerService.fetchCustomers().catch(e => { console.warn('fetchCustomers failed', e); return []; }),
           orderService.fetchOrders().catch(e => { console.warn('fetchOrders failed', e); return []; }),
@@ -685,6 +738,10 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           paymentMethodService.fetchPaymentSubmissions().catch(e => { console.warn('fetchPaymentSubmissions failed', e); return []; }),
           deliveryService.fetchDeliveryUnits().catch(e => { console.warn('fetchDeliveryUnits failed', e); return []; }),
           deliveryService.fetchDeliveryTrips().catch(e => { console.warn('fetchDeliveryTrips failed', e); return []; }),
+          supplierService.fetchSuppliers().catch(e => { console.warn('fetchSuppliers failed', e); return []; }),
+          vendorAdvanceService.fetchAdvances().catch(e => { console.warn('fetchAdvances failed', e); return []; }),
+          vendorAdvanceService.fetchBills().catch(e => { console.warn('fetchBills failed', e); return []; }),
+          vendorAdvanceService.fetchAdjustments().catch(e => { console.warn('fetchAdjustments failed', e); return []; }),
         ]);
 
         setRetailers(custs);
@@ -711,6 +768,10 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setPaymentSubmissions(pSubs);
         setDeliveryUnits(dUnits);
         setDeliveryTrips(dTrips);
+        setSuppliers(sups);
+        setVendorAdvances(vAdvs);
+        setVendorBills(vBills);
+        setVendorAdvanceAdjustments(vAdjs);
       }
     } catch (err: any) {
       console.error('Data refresh error:', err);
@@ -1221,6 +1282,83 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return newExp;
     } catch (err: any) {
       addToast(`Error recording expense: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Vendor / Farmer Advances & Bills
+  const refreshVendorAdvances = useCallback(async () => {
+    try {
+      const [sups, advs, blls, adjs] = await Promise.all([
+        supplierService.fetchSuppliers().catch(e => { console.warn('fetchSuppliers failed', e); return []; }),
+        vendorAdvanceService.fetchAdvances().catch(e => { console.warn('fetchAdvances failed', e); return []; }),
+        vendorAdvanceService.fetchBills().catch(e => { console.warn('fetchBills failed', e); return []; }),
+        vendorAdvanceService.fetchAdjustments().catch(e => { console.warn('fetchAdjustments failed', e); return []; }),
+      ]);
+      setSuppliers(sups);
+      setVendorAdvances(advs);
+      setVendorBills(blls);
+      setVendorAdvanceAdjustments(adjs);
+    } catch (err: any) {
+      console.error('refreshVendorAdvances error:', err);
+    }
+  }, []);
+
+  const recordVendorAdvance = async (data: {
+    supplierId?: string;
+    vendorName: string;
+    amount: number;
+    paymentMethod: PaymentMethod;
+    advanceDate?: string;
+    referenceNumber?: string;
+    notes?: string;
+  }) => {
+    try {
+      const result = await vendorAdvanceService.recordAdvance(data);
+      await refreshVendorAdvances();
+      addToast(`Advance ${result.advanceNumber} recorded successfully!`, 'success');
+      return result;
+    } catch (err: any) {
+      addToast(`Failed to record advance: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const createVendorBill = async (data: {
+    supplierId?: string;
+    vendorName: string;
+    billNumber?: string;
+    billDate?: string;
+    dueDate?: string;
+    category?: string;
+    totalAmount: number;
+    notes?: string;
+  }) => {
+    try {
+      const result = await vendorAdvanceService.createBill(data);
+      await refreshVendorAdvances();
+      addToast(`Vendor bill ${result.billNumber} created successfully!`, 'success');
+      return result;
+    } catch (err: any) {
+      addToast(`Failed to create vendor bill: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const adjustVendorAdvanceAgainstBill = async (data: {
+    advanceId: string;
+    billId: string;
+    adjustmentAmount: number;
+    adjustmentDate?: string;
+    notes?: string;
+  }) => {
+    try {
+      const result = await vendorAdvanceService.adjustAdvanceAgainstBill(data);
+      await refreshVendorAdvances();
+      addToast(`Adjustment ${result.adjustmentNumber} recorded! New advance balance: ₹${result.newAdvanceBalance.toLocaleString('en-IN')}`, 'success');
+      return result;
+    } catch (err: any) {
+      addToast(`Adjustment failed: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -2500,6 +2638,14 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordPayment,
         recordCustomerPaymentWithAllocations,
         addExpense,
+        suppliers,
+        vendorAdvances,
+        vendorBills,
+        vendorAdvanceAdjustments,
+        recordVendorAdvance,
+        createVendorBill,
+        adjustVendorAdvanceAgainstBill,
+        refreshVendorAdvances,
         addRawMaterialStock,
         addRawMaterialPurchase,
         recordRawMaterialUsage,

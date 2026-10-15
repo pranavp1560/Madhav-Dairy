@@ -650,3 +650,95 @@ export interface CustomerPaymentSubmission {
   updatedAt?: string;
 }
 
+// -----------------------------------------------------------------------------
+// Vendor & Farmer Advance Tracking Interfaces
+// -----------------------------------------------------------------------------
+export interface Supplier {
+  id: string;
+  organizationId: string;
+  supplierCode: string;
+  name: string;
+  contactPerson?: string;
+  mobile: string;
+  email?: string;
+  address?: string;
+  gstin?: string;
+  status: 'active' | 'inactive' | 'blacklisted';
+  createdAt?: string;
+}
+
+export type AdvanceStatus = 'available' | 'partially_adjusted' | 'fully_adjusted';
+
+export interface VendorAdvance {
+  id: string;
+  organizationId: string;
+  advanceNumber: string;
+  supplierId?: string;
+  vendorName: string;
+  advanceDate: string;
+  amount: number;
+  adjustedAmount: number;
+  balanceAmount: number;
+  paymentMethod: PaymentMethod;
+  referenceNumber?: string;
+  notes?: string;
+  status: AdvanceStatus;
+  recordedBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type VendorBillStatus = 'unpaid' | 'partially_adjusted' | 'settled' | 'cancelled';
+
+export interface VendorBill {
+  id: string;
+  organizationId: string;
+  billNumber: string;
+  supplierId?: string;
+  vendorName: string;
+  billDate: string;
+  dueDate?: string;
+  category: string;
+  totalAmount: number;
+  adjustedAmount: number;
+  paidAmount: number;
+  balanceAmount: number;
+  status: VendorBillStatus;
+  notes?: string;
+  expenseId?: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface VendorAdvanceAdjustment {
+  id: string;
+  organizationId: string;
+  adjustmentNumber: string;
+  advanceId: string;
+  billId: string;
+  supplierId?: string;
+  vendorName: string;
+  billNumber: string;
+  advanceNumber: string;
+  adjustmentDate: string;
+  adjustedAmount: number;
+  notes?: string;
+  adjustedBy?: string;
+  createdAt?: string;
+}
+
+export interface VendorAdvanceSummary {
+  supplierId?: string;
+  vendorName: string;
+  contactPerson?: string;
+  mobile?: string;
+  totalAdvancesPaid: number;
+  totalAdjusted: number;
+  availableAdvanceBalance: number;
+  totalBillsAmount: number;
+  totalBillsPayable: number;
+  advancesCount: number;
+  billsCount: number;
+}
+

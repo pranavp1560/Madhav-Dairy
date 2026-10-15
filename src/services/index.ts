@@ -14,3 +14,5 @@ export * from './userService';
 export * from './channelService';
 export * from './paymentMethodService';
 export * from './deliveryService';
+export * from './supplierService';
+export * from './vendorAdvanceService';
