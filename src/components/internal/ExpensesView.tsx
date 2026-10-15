@@ -11,13 +11,12 @@ interface ExpensesViewProps {
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) => {
   const { expenses } = useDairy();
   const [showAdvances, setShowAdvances] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   if (showAdvances) {
     return <VendorAdvancesPanel onBack={() => setShowAdvances(false)} />;
   }
-
-  const [categoryFilter, setCategoryFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const filteredExpenses = expenses.filter(exp => {
     const matchesCategory = categoryFilter === 'all' || exp.category === categoryFilter;
