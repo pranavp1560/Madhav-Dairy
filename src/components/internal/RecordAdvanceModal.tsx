@@ -1,26 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { Modal } from '../common/Modal';
-import { PaymentMethod, Supplier } from '../../types/dairy';
-import { IndianRupee, Calendar, CreditCard, UserCheck, FileText, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { PaymentMethod } from '../../types/dairy';
+import { IndianRupee, AlertCircle, ArrowUpRight } from 'lucide-react';
 
 interface RecordAdvanceModalProps {
   isOpen: boolean;
   onClose: () => void;
-  defaultSupplierId?: string;
 }
 
 export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
   isOpen,
   onClose,
-  defaultSupplierId,
 }) => {
-  const { suppliers, recordVendorAdvance } = useDairy();
+  const { recordVendorAdvance } = useDairy();
 
   const today = new Date().toISOString().split('T')[0];
 
-  const [selectedSupplierId, setSelectedSupplierId] = useState<string>(defaultSupplierId || '');
-  const [customVendorName, setCustomVendorName] = useState<string>('');
+  const [vendorName, setVendorName] = useState<string>('');
   const [amount, setAmount] = useState<number | ''>(5000);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('bank_transfer');
   const [advanceDate, setAdvanceDate] = useState<string>(today);
@@ -28,16 +25,6 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
   const [notes, setNotes] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (defaultSupplierId) {
-      setSelectedSupplierId(defaultSupplierId);
-    }
-  }, [defaultSupplierId]);
-
-  // Derive vendor display name
-  const selectedSupplier: Supplier | undefined = suppliers.find(s => s.id === selectedSupplierId);
-  const effectiveVendorName = selectedSupplier ? selectedSupplier.name : customVendorName;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,16 +36,15 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
       return;
     }
 
-    if (!effectiveVendorName.trim()) {
-      setError('Please select or specify a vendor / farmer name.');
+    if (!vendorName.trim()) {
+      setError('Please enter the vendor / farmer name.');
       return;
     }
 
     try {
       setIsSubmitting(true);
       await recordVendorAdvance({
-        supplierId: selectedSupplierId || undefined,
-        vendorName: effectiveVendorName.trim(),
+        vendorName: vendorName.trim(),
         amount: numericAmount,
         paymentMethod,
         advanceDate: advanceDate || today,
@@ -67,6 +53,7 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
       });
 
       // Reset form
+      setVendorName('');
       setAmount(5000);
       setReferenceNumber('');
       setNotes('');
@@ -83,9 +70,9 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Record Vendor / Farmer Advance"
-      subtitle="Disburse advance payments to milk farmers and suppliers to be adjusted against future collection bills"
-      maxWidth="lg"
+      title="Record Advance Payment"
+      subtitle="Disburse an advance to a vendor or farmer. This row will appear in your Expenses table and can be adjusted later against goods."
+      maxWidth="md"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
         {error && (
@@ -95,64 +82,21 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
           </div>
         )}
 
-        {/* Vendor / Farmer Selection */}
+        {/* Paid To / Vendor Name as a simple text input */}
         <div>
           <label className="block font-semibold text-slate-700 mb-1">
-            Select Vendor / Farmer <span className="text-red-500">*</span>
+            Vendor / Farmer Name (Paid To) <span className="text-red-500">*</span>
           </label>
-          <select
-            value={selectedSupplierId}
-            onChange={e => {
-              setSelectedSupplierId(e.target.value);
-              if (e.target.value) {
-                setCustomVendorName('');
-              }
-            }}
-            className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-          >
-            <option value="">-- Choose from Registered Suppliers / Societies --</option>
-            {suppliers.map(sup => (
-              <option key={sup.id} value={sup.id}>
-                {sup.name} {sup.supplierCode ? `(${sup.supplierCode})` : ''} {sup.mobile ? `• ${sup.mobile}` : ''}
-              </option>
-            ))}
-            <option value="other">Other / One-off Vendor or Farmer (Manual Entry)</option>
-          </select>
+          <input
+            type="text"
+            value={vendorName}
+            onChange={e => setVendorName(e.target.value)}
+            placeholder="e.g. Ramesh Patil / Shirwal Milk Centre"
+            className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+            required
+            autoFocus
+          />
         </div>
-
-        {/* Manual Vendor Name if "other" or no match */}
-        {selectedSupplierId === 'other' && (
-          <div>
-            <label className="block font-semibold text-slate-700 mb-1">
-              Vendor / Farmer Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={customVendorName}
-              onChange={e => setCustomVendorName(e.target.value)}
-              placeholder="e.g. Ramesh Patil (Village Milk Centre)"
-              className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-              required
-            />
-          </div>
-        )}
-
-        {selectedSupplier && (
-          <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-100 flex items-center justify-between text-slate-700">
-            <div className="flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-blue-600" />
-              <div>
-                <span className="font-bold text-slate-900">{selectedSupplier.name}</span>
-                {selectedSupplier.contactPerson && (
-                  <span className="text-slate-500 ml-1.5 font-normal">Contact: {selectedSupplier.contactPerson}</span>
-                )}
-              </div>
-            </div>
-            {selectedSupplier.mobile && (
-              <span className="font-mono-numbers text-slate-600">{selectedSupplier.mobile}</span>
-            )}
-          </div>
-        )}
 
         {/* Amount & Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -179,17 +123,15 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Disbursement Date <span className="text-red-500">*</span>
+              Payment Date <span className="text-red-500">*</span>
             </label>
-            <div className="relative">
-              <input
-                type="date"
-                value={advanceDate}
-                onChange={e => setAdvanceDate(e.target.value)}
-                className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
-                required
-              />
-            </div>
+            <input
+              type="date"
+              value={advanceDate}
+              onChange={e => setAdvanceDate(e.target.value)}
+              className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
+              required
+            />
           </div>
         </div>
 
@@ -213,28 +155,28 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
 
           <div>
             <label className="block font-semibold text-slate-700 mb-1">
-              Reference / Voucher #
+              Voucher / Ref #
             </label>
             <input
               type="text"
               value={referenceNumber}
               onChange={e => setReferenceNumber(e.target.value)}
-              placeholder="e.g. UTR-982347 / CHQ-10442"
+              placeholder="e.g. UTR-98234 / CHQ-10442"
               className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono-numbers focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
             />
           </div>
         </div>
 
-        {/* Notes */}
+        {/* Description / Notes */}
         <div>
           <label className="block font-semibold text-slate-700 mb-1">
-            Notes / Purpose
+            Description / Notes
           </label>
-          <textarea
-            rows={2}
+          <input
+            type="text"
             value={notes}
             onChange={e => setNotes(e.target.value)}
-            placeholder="e.g. Weekly milk procurement advance for morning collection cycle."
+            placeholder="e.g. Advance payment against upcoming raw milk procurement"
             className="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:outline-none"
           />
         </div>
@@ -244,10 +186,10 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
           <div>
             <span className="font-bold text-emerald-800 flex items-center gap-1.5">
               <ArrowUpRight className="w-4 h-4 text-emerald-600" />
-              Available Advance Credit Created
+              Advance Outflow & Available Credit
             </span>
             <span className="text-[11px] text-emerald-700 mt-0.5 block">
-              This balance can be manually adjusted against incoming procurement bills at any time.
+              Counted in your expense totals. You can adjust it later when goods/milk are delivered.
             </span>
           </div>
           <span className="text-base font-black font-mono-numbers text-emerald-700">
@@ -267,15 +209,15 @@ export const RecordAdvanceModal: React.FC<RecordAdvanceModalProps> = ({
           </button>
           <button
             type="submit"
-            disabled={isSubmitting || !amount || Number(amount) <= 0}
-            className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
+            disabled={isSubmitting || !amount || Number(amount) <= 0 || !vendorName.trim()}
+            className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all disabled:opacity-50 flex items-center gap-1.5"
           >
             {isSubmitting ? (
               <span>Recording...</span>
             ) : (
               <>
                 <IndianRupee className="w-3.5 h-3.5" />
-                <span>Confirm Advance Disbursement</span>
+                <span>Save Advance Payment</span>
               </>
             )}
           </button>

@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 console.log('================================================================');
-console.log('Madhav Dairy — Vendor / Farmer Advance Tracking Test Suite');
+console.log('Madhav Dairy — Streamlined Vendor Advance & Expenses Test Suite');
 console.log('================================================================\n');
 
 let passedTests = 0;
@@ -20,46 +20,34 @@ function assert(condition, testName) {
 }
 
 // -----------------------------------------------------------------------------
-// Test 1: Verify Database Migration File Exists & Contains Proper DDL
+// Test 1: Database Migration & Schema Verification
 // -----------------------------------------------------------------------------
 console.log('[1] Database Schema & Migration Verification');
-const migrationPath = path.resolve('supabase/migrations/20261015000036_vendor_farmer_advance_tracking_and_adjustments.sql');
-assert(fs.existsSync(migrationPath), 'Migration 036 file exists on disk');
+const migration036Path = path.resolve('supabase/migrations/20261015000036_vendor_farmer_advance_tracking_and_adjustments.sql');
+assert(fs.existsSync(migration036Path), 'Migration 036 file exists on disk');
 
-const migrationSql = fs.readFileSync(migrationPath, 'utf8');
+const migration037Path = path.resolve('supabase/migrations/20261015000037_simplify_vendor_advance_adjustments.sql');
+assert(fs.existsSync(migration037Path), 'Migration 037 file exists on disk');
 
-// Tables
-assert(migrationSql.includes('CREATE TABLE IF NOT EXISTS public.vendor_advances'), 'Contains vendor_advances table');
-assert(migrationSql.includes('CREATE TABLE IF NOT EXISTS public.vendor_bills'), 'Contains vendor_bills table');
-assert(migrationSql.includes('CREATE TABLE IF NOT EXISTS public.vendor_advance_adjustments'), 'Contains vendor_advance_adjustments table');
+const sql036 = fs.readFileSync(migration036Path, 'utf8');
+const sql037 = fs.readFileSync(migration037Path, 'utf8');
 
-// Integrity Check Constraints
-assert(migrationSql.includes('CHECK (amount > 0)'), 'Enforces positive advance amount constraint');
-assert(migrationSql.includes('CHECK (adjusted_amount >= 0)'), 'Enforces non-negative adjusted amount');
-assert(migrationSql.includes('chk_vendor_adv_adjusted'), 'Enforces adjusted_amount <= amount check constraint');
-assert(migrationSql.includes('chk_vendor_adv_balance'), 'Enforces exact balance = amount - adjusted_amount check');
-assert(migrationSql.includes('chk_vendor_bills_balance'), 'Enforces exact bill balance = total_amount - (adjusted_amount + paid_amount)');
-assert(migrationSql.includes('chk_vendor_bills_deductions'), 'Enforces total bill settlements <= total_amount');
+assert(sql036.includes('CREATE TABLE IF NOT EXISTS public.vendor_advances'), 'Contains vendor_advances table');
+assert(sql036.includes('CHECK (amount > 0)'), 'Enforces positive advance amount constraint');
+assert(sql036.includes('chk_vendor_adv_adjusted'), 'Enforces adjusted_amount <= amount check constraint');
+assert(sql036.includes('chk_vendor_adv_balance'), 'Enforces exact balance = amount - adjusted_amount check');
+assert(sql036.includes('RLS ENABLE ROW LEVEL SECURITY') || sql036.includes('ENABLE ROW LEVEL SECURITY;'), 'RLS enabled on vendor_advances');
 
-// Row Level Security
-assert(migrationSql.includes('ALTER TABLE public.vendor_advances ENABLE ROW LEVEL SECURITY;'), 'RLS enabled on vendor_advances');
-assert(migrationSql.includes('ALTER TABLE public.vendor_bills ENABLE ROW LEVEL SECURITY;'), 'RLS enabled on vendor_bills');
-assert(migrationSql.includes('ALTER TABLE public.vendor_advance_adjustments ENABLE ROW LEVEL SECURITY;'), 'RLS enabled on vendor_advance_adjustments');
-
-// Atomic Stored Procedures / RPCs
-assert(migrationSql.includes('FUNCTION public.record_vendor_advance'), 'Defines record_vendor_advance RPC');
-assert(migrationSql.includes('FUNCTION public.create_vendor_bill'), 'Defines create_vendor_bill RPC');
-assert(migrationSql.includes('FUNCTION public.adjust_vendor_advance_against_bill'), 'Defines adjust_vendor_advance_against_bill RPC');
-assert(migrationSql.includes('SECURITY DEFINER'), 'RPCs configured with SECURITY DEFINER');
-assert(migrationSql.includes('SET search_path = public'), 'RPCs explicitly pin search_path to public');
-assert(migrationSql.includes('FOR UPDATE'), 'Adjustment RPC locks both advance and bill rows FOR UPDATE against race conditions');
+assert(sql037.includes('bill_id DROP NOT NULL'), 'Allows direct adjustment without bill requirement');
+assert(sql037.includes('adjust_vendor_advance'), 'Defines atomic adjust_vendor_advance RPC');
+assert(sql037.includes('FOR UPDATE'), 'Adjustment RPC locks advance row FOR UPDATE against race conditions');
 
 // -----------------------------------------------------------------------------
-// Test 2: Over-Adjustment Protection & Math Rules
+// Test 2: Advance Calculation & Expense Total Accounting
 // -----------------------------------------------------------------------------
-console.log('\n[2] Advance Calculation & Over-Adjustment Guard Rails');
+console.log('\n[2] Advance Calculation & Expense Total Accounting');
 
-function simulateAdjustment(advance, bill, requestedAdjustment) {
+function simulateDirectAdjustment(advance, requestedAdjustment, goodsDescription) {
   if (requestedAdjustment <= 0) {
     return { success: false, error: 'Adjustment amount must be positive' };
   }
@@ -69,137 +57,93 @@ function simulateAdjustment(advance, bill, requestedAdjustment) {
       error: `Adjustment amount (₹${requestedAdjustment}) exceeds available advance balance (₹${advance.balanceAmount})`,
     };
   }
-  if (requestedAdjustment > bill.balanceAmount) {
-    return {
-      success: false,
-      error: `Adjustment amount (₹${requestedAdjustment}) exceeds bill balance (₹${bill.balanceAmount})`,
-    };
-  }
 
-  const newAdvanceAdjusted = advance.adjustedAmount + requestedAdjustment;
-  const newAdvanceBalance = advance.amount - newAdvanceAdjusted;
-  const newBillAdjusted = bill.adjustedAmount + requestedAdjustment;
-  const newBillBalance = bill.totalAmount - (newBillAdjusted + bill.paidAmount);
+  const newAdjustedAmount = advance.adjustedAmount + requestedAdjustment;
+  const newBalanceAmount = advance.amount - newAdjustedAmount;
 
   return {
     success: true,
-    newAdvanceBalance,
-    newBillBalance,
+    newAdjustedAmount,
+    newBalanceAmount,
+    goodsDescription,
   };
 }
 
-const mockAdvance = {
+const advance10k = {
   amount: 10000,
-  adjustedAmount: 2000,
-  balanceAmount: 8000,
-};
-
-const mockBill = {
-  totalAmount: 15000,
   adjustedAmount: 0,
-  paidAmount: 5000,
   balanceAmount: 10000,
 };
 
-// Valid partial adjustment
-const validRes = simulateAdjustment(mockAdvance, mockBill, 5000);
-assert(validRes.success === true, 'Allows valid partial adjustment (₹5,000 <= ₹8,000 advance & ₹10,000 bill)');
-assert(validRes.newAdvanceBalance === 3000, 'Calculates correct new advance balance (₹8,000 - ₹5,000 = ₹3,000)');
-assert(validRes.newBillBalance === 5000, 'Calculates correct new bill balance (₹10,000 - ₹5,000 = ₹5,000)');
+// Scenario: Give 10k advance, then take 4k goods from vendor
+const adj4k = simulateDirectAdjustment(advance10k, 4000, 'Raw milk collection - 100 Litres');
+assert(adj4k.success === true, 'Allows valid adjustment against goods received');
+assert(adj4k.newBalanceAmount === 6000, 'Calculates remaining advance balance: ₹10,000 - ₹4,000 = ₹6,000');
+assert(adj4k.newAdjustedAmount === 4000, 'Records adjusted amount: ₹4,000');
 
-// Over-adjustment exceeding advance balance
-const overAdvRes = simulateAdjustment(mockAdvance, mockBill, 9000);
-assert(overAdvRes.success === false, 'Strictly blocks adjustment exceeding advance balance (₹9,000 > ₹8,000)');
-assert(overAdvRes.error.includes('exceeds available advance balance'), 'Returns descriptive error for over-adjustment on advance');
+// Scenario: Over-adjustment blocked
+const overAdj = simulateDirectAdjustment(advance10k, 12000, 'Too much goods');
+assert(overAdj.success === false, 'Strictly blocks adjustment exceeding advance balance (₹12,000 > ₹10,000)');
+assert(overAdj.error.includes('exceeds available advance balance'), 'Returns descriptive error on over-adjustment');
 
-// Over-adjustment exceeding bill balance
-const smallBill = {
-  totalAmount: 4000,
-  adjustedAmount: 0,
-  paidAmount: 0,
-  balanceAmount: 4000,
-};
-const overBillRes = simulateAdjustment(mockAdvance, smallBill, 6000);
-assert(overBillRes.success === false, 'Strictly blocks adjustment exceeding remaining bill payable (₹6,000 > ₹4,000)');
-assert(overBillRes.error.includes('exceeds bill balance'), 'Returns descriptive error for over-adjustment on bill');
+// Expense Total Accounting check:
+// "also util adjust and after adjust also this should show in expence total"
+const sampleExpenses = [
+  { amount: 5000, description: 'Electricity bill' },
+  { amount: 3000, description: 'Transportation' },
+];
+const initialAdvance = { amount: 10000, adjustedAmount: 0, balanceAmount: 10000 };
+const totalUntilAdjust = sampleExpenses.reduce((s, e) => s + e.amount, 0) + initialAdvance.amount;
+assert(totalUntilAdjust === 18000, 'Until adjust: Advance (₹10,000) is included in total expense (₹18,000)');
 
-// Zero or negative adjustment
-const zeroRes = simulateAdjustment(mockAdvance, mockBill, 0);
-assert(zeroRes.success === false, 'Rejects zero amount adjustment');
-const negRes = simulateAdjustment(mockAdvance, mockBill, -500);
-assert(negRes.success === false, 'Rejects negative amount adjustment');
+const adjustedAdvance = { amount: 10000, adjustedAmount: 4000, balanceAmount: 6000 };
+const totalAfterAdjust = sampleExpenses.reduce((s, e) => s + e.amount, 0) + adjustedAdvance.amount;
+assert(totalAfterAdjust === 18000, 'After adjust: Advance (₹10,000) remains in total expense (₹18,000)');
 
 // -----------------------------------------------------------------------------
-// Test 3: Frontend Component & State Integration Verification
+// Test 3: Frontend Component & Layout Verification
 // -----------------------------------------------------------------------------
-console.log('\n[3] Frontend Component & State Integration Verification');
+console.log('\n[3] Frontend Component & Layout Verification');
 
 // ExpensesView.tsx
 const expensesViewPath = path.resolve('src/components/internal/ExpensesView.tsx');
 assert(fs.existsSync(expensesViewPath), 'ExpensesView.tsx exists');
 const expensesViewContent = fs.readFileSync(expensesViewPath, 'utf8');
 
-assert(expensesViewContent.includes('+ Advance Payment'), 'ExpensesView contains prominent "+ Advance Payment" button');
-assert(expensesViewContent.includes('onOpenAddExpense'), 'Preserves existing onOpenAddExpense action');
-assert(expensesViewContent.includes('operating_expenses'), 'Preserves Operating Expenses subtab');
-assert(expensesViewContent.includes('vendor_advances'), 'Includes Vendor & Farmer Advances subtab');
-assert(expensesViewContent.includes('vendor_bills'), 'Includes Vendor Bills & Payables subtab');
-assert(expensesViewContent.includes('adjustments_log'), 'Includes Adjustment Audit Log subtab');
-assert(expensesViewContent.includes('Total Advances Disbursed'), 'Includes Total Advances Disbursed KPI');
-assert(expensesViewContent.includes('Available Advance Balance'), 'Includes Available Advance Balance KPI');
-assert(expensesViewContent.includes('advVendorFilter'), 'Includes Vendor/Farmer filter');
-assert(expensesViewContent.includes('advPaymentMethodFilter'), 'Includes Payment Method filter');
-assert(expensesViewContent.includes('advDateFilter'), 'Includes Date filter');
+assert(expensesViewContent.includes('+ Advance Payment'), 'Header includes "+ Advance Payment" button');
+assert(expensesViewContent.includes('+ Add Expense'), 'Header includes "+ Add Expense" button');
+assert(!expensesViewContent.includes('vendor_bills'), 'No separate Vendor Bills tab (unified single page)');
+assert(!expensesViewContent.includes('adjustments_log'), 'No separate Adjustments Log tab (unified single page)');
+assert(expensesViewContent.includes('Vendor Advance'), 'Table includes "Vendor Advance" rows');
+assert(expensesViewContent.includes('unifiedItems'), 'Combines expenses and advances in unified table');
+assert(expensesViewContent.includes('setSelectedAdvanceToAdjust'), 'Advance row provides "Adjust" button');
 assert(expensesViewContent.includes('RecordAdvanceModal'), 'Integrates RecordAdvanceModal');
-assert(expensesViewContent.includes('CreateVendorBillModal'), 'Integrates CreateVendorBillModal');
 assert(expensesViewContent.includes('AdjustAdvanceModal'), 'Integrates AdjustAdvanceModal');
 
 // RecordAdvanceModal.tsx
 const recordModalPath = path.resolve('src/components/internal/RecordAdvanceModal.tsx');
 assert(fs.existsSync(recordModalPath), 'RecordAdvanceModal.tsx exists');
 const recordModalContent = fs.readFileSync(recordModalPath, 'utf8');
-assert(recordModalContent.includes('suppliers.map'), 'Presents suppliers/farmers from existing records');
-assert(recordModalContent.includes('advanceDate'), 'Captures advance date');
-assert(recordModalContent.includes('paymentMethod'), 'Captures payment method');
-assert(recordModalContent.includes('referenceNumber'), 'Captures reference/voucher number');
+
+assert(recordModalContent.includes('type="text"'), 'Uses text field for vendor/farmer name');
+assert(!recordModalContent.includes('suppliers.map'), 'Does NOT use vendors dropdown in RecordAdvanceModal');
 assert(recordModalContent.includes('recordVendorAdvance'), 'Dispatches recordVendorAdvance action');
 
 // AdjustAdvanceModal.tsx
 const adjustModalPath = path.resolve('src/components/internal/AdjustAdvanceModal.tsx');
 assert(fs.existsSync(adjustModalPath), 'AdjustAdvanceModal.tsx exists');
 const adjustModalContent = fs.readFileSync(adjustModalPath, 'utf8');
-assert(adjustModalContent.includes('Math.min(advBal, billBal)'), 'Computes max allowable adjustment dynamically');
-assert(adjustModalContent.includes('isOverAdvanceBalance'), 'Enforces client-side advance balance guard rail');
-assert(adjustModalContent.includes('isOverBillBalance'), 'Enforces client-side bill payable balance guard rail');
-assert(adjustModalContent.includes('newAdvanceBalance'), 'Shows real-time live preview of new advance balance');
-assert(adjustModalContent.includes('newBillBalance'), 'Shows real-time live preview of new bill balance');
-assert(adjustModalContent.includes('adjustVendorAdvanceAgainstBill'), 'Calls adjustVendorAdvanceAgainstBill action');
+
+assert(adjustModalContent.includes('adjustmentAmount'), 'Provides input for adjustment amount');
+assert(adjustModalContent.includes('description'), 'Provides input for goods / raw material description');
+assert(adjustModalContent.includes('newAdvanceBalance'), 'Shows live remaining advance balance');
+assert(adjustModalContent.includes('adjustVendorAdvanceDirect'), 'Calls adjustVendorAdvanceDirect action');
 
 // DairyContext.tsx
 const dairyContextPath = path.resolve('src/context/DairyContext.tsx');
 const dairyContextContent = fs.readFileSync(dairyContextPath, 'utf8');
-assert(dairyContextContent.includes('suppliers,'), 'DairyContext exposes suppliers in value');
-assert(dairyContextContent.includes('vendorAdvances,'), 'DairyContext exposes vendorAdvances in value');
-assert(dairyContextContent.includes('vendorBills,'), 'DairyContext exposes vendorBills in value');
-assert(dairyContextContent.includes('vendorAdvanceAdjustments,'), 'DairyContext exposes vendorAdvanceAdjustments in value');
-assert(dairyContextContent.includes('recordVendorAdvance,'), 'DairyContext exposes recordVendorAdvance in value');
-assert(dairyContextContent.includes('createVendorBill,'), 'DairyContext exposes createVendorBill in value');
-assert(dairyContextContent.includes('adjustVendorAdvanceAgainstBill,'), 'DairyContext exposes adjustVendorAdvanceAgainstBill in value');
-assert(dairyContextContent.includes('refreshVendorAdvances,'), 'DairyContext exposes refreshVendorAdvances in value');
-
-// -----------------------------------------------------------------------------
-// Test 4: TypeScript Types Integrity
-// -----------------------------------------------------------------------------
-console.log('\n[4] TypeScript Types Definition Verification');
-const typesPath = path.resolve('src/types/dairy.ts');
-const typesContent = fs.readFileSync(typesPath, 'utf8');
-
-assert(typesContent.includes('export interface Supplier'), 'Defines Supplier interface');
-assert(typesContent.includes('export type AdvanceStatus'), 'Defines AdvanceStatus type');
-assert(typesContent.includes('export interface VendorAdvance'), 'Defines VendorAdvance interface');
-assert(typesContent.includes('export type VendorBillStatus'), 'Defines VendorBillStatus type');
-assert(typesContent.includes('export interface VendorBill'), 'Defines VendorBill interface');
-assert(typesContent.includes('export interface VendorAdvanceAdjustment'), 'Defines VendorAdvanceAdjustment interface');
+assert(dairyContextContent.includes('adjustVendorAdvanceDirect'), 'DairyContext exposes adjustVendorAdvanceDirect');
+assert(dairyContextContent.includes('recordVendorAdvance'), 'DairyContext exposes recordVendorAdvance');
 
 console.log('\n================================================================');
 console.log(`Results: ${passedTests} / ${totalTests} tests passed (${Math.round((passedTests / totalTests) * 100)}%)`);

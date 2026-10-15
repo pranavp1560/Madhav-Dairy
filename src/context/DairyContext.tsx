@@ -365,6 +365,19 @@ interface DairyContextType {
     newAdvanceBalance: number;
     newBillBalance: number;
   }>;
+  adjustVendorAdvanceDirect: (data: {
+    advanceId: string;
+    adjustmentAmount: number;
+    description?: string;
+    adjustmentDate?: string;
+    notes?: string;
+  }) => Promise<{
+    success: boolean;
+    adjustmentId: string;
+    adjustmentNumber: string;
+    newAdvanceBalance: number;
+    newAdjustedAmount: number;
+  }>;
   refreshVendorAdvances: () => Promise<void>;
 
   addRawMaterialStock: (materialId: string, qty: number, reference: string, notes?: string) => Promise<void>;
@@ -1356,6 +1369,24 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const result = await vendorAdvanceService.adjustAdvanceAgainstBill(data);
       await refreshVendorAdvances();
       addToast(`Adjustment ${result.adjustmentNumber} recorded! New advance balance: ₹${result.newAdvanceBalance.toLocaleString('en-IN')}`, 'success');
+      return result;
+    } catch (err: any) {
+      addToast(`Adjustment failed: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const adjustVendorAdvanceDirect = async (data: {
+    advanceId: string;
+    adjustmentAmount: number;
+    description?: string;
+    adjustmentDate?: string;
+    notes?: string;
+  }) => {
+    try {
+      const result = await vendorAdvanceService.adjustAdvanceDirect(data);
+      await refreshVendorAdvances();
+      addToast(`Adjustment ${result.adjustmentNumber} of ₹${data.adjustmentAmount.toLocaleString('en-IN')} recorded! Remaining balance: ₹${result.newAdvanceBalance.toLocaleString('en-IN')}`, 'success');
       return result;
     } catch (err: any) {
       addToast(`Adjustment failed: ${err.message}`, 'error');
@@ -2645,6 +2676,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordVendorAdvance,
         createVendorBill,
         adjustVendorAdvanceAgainstBill,
+        adjustVendorAdvanceDirect,
         refreshVendorAdvances,
         addRawMaterialStock,
         addRawMaterialPurchase,

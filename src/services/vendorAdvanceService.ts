@@ -302,5 +302,52 @@ export const vendorAdvanceService = {
       newAdvanceBalance: Number(data.new_advance_balance),
       newBillBalance: Number(data.new_bill_balance),
     };
+  },
+
+  /**
+   * Adjust an advance directly against an expense / goods / raw material.
+   * Guarantees atomic row-level locking and prevents over-adjustment.
+   */
+  async adjustAdvanceDirect(params: {
+    advanceId: string;
+    adjustmentAmount: number;
+    description?: string;
+    adjustmentDate?: string;
+    notes?: string;
+  }): Promise<{
+    success: boolean;
+    adjustmentId: string;
+    adjustmentNumber: string;
+    newAdvanceBalance: number;
+    newAdjustedAmount: number;
+  }> {
+    if (params.adjustmentAmount <= 0) {
+      throw new Error('Adjustment amount must be greater than zero.');
+    }
+
+    const { data, error } = await supabase.rpc('adjust_vendor_advance', {
+      p_advance_id: params.advanceId,
+      p_adjustment_amount: params.adjustmentAmount,
+      p_description: params.description || null,
+      p_adjustment_date: params.adjustmentDate || new Date().toISOString().split('T')[0],
+      p_notes: params.notes || null,
+    });
+
+    if (error) {
+      console.error('adjust_vendor_advance RPC failed:', error);
+      throw new Error(error.message || 'Failed to adjust advance');
+    }
+
+    if (!data?.success) {
+      throw new Error('Failed to adjust advance');
+    }
+
+    return {
+      success: true,
+      adjustmentId: data.adjustment_id,
+      adjustmentNumber: data.adjustment_number,
+      newAdvanceBalance: Number(data.new_advance_balance),
+      newAdjustedAmount: Number(data.new_adjusted_amount),
+    };
   }
 };
