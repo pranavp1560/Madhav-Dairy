@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { ExpenseCategory } from '../../types/dairy';
-import { Receipt, Plus, Search, Filter, Fuel, Truck, Zap, Users, Wrench } from 'lucide-react';
+import { VendorAdvancesPanel } from './VendorAdvancesPanel';
+import { Receipt, Plus, Search, Wallet } from 'lucide-react';
 
 interface ExpensesViewProps {
   onOpenAddExpense: () => void;
@@ -9,9 +10,13 @@ interface ExpensesViewProps {
 
 export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) => {
   const { expenses } = useDairy();
-
+  const [showAdvances, setShowAdvances] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  if (showAdvances) {
+    return <VendorAdvancesPanel onBack={() => setShowAdvances(false)} />;
+  }
 
   const filteredExpenses = expenses.filter(exp => {
     const matchesCategory = categoryFilter === 'all' || exp.category === categoryFilter;
@@ -54,6 +59,14 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           </p>
         </div>
 
+        <div className="flex flex-wrap items-center gap-2">
+        <button
+          onClick={() => setShowAdvances(true)}
+          className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+        >
+          <Wallet className="w-4 h-4" />
+          <span>Vendor / Farmer Advances</span>
+        </button>
         <button
           onClick={onOpenAddExpense}
           className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
@@ -61,6 +74,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           <Plus className="w-4 h-4" />
           <span>+ Add Expense</span>
         </button>
+        </div>
       </div>
 
       {/* 4 Dashboard Cards as requested in Section 27 */}
