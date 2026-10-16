@@ -57,6 +57,7 @@ import {
   notificationService,
   userService,
   channelService,
+  clearOrgCache,
   UserSessionProfile
 } from '../services';
 
@@ -912,6 +913,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           console.error('Auth state profile error:', err);
         }
       } else if (event === 'SIGNED_OUT') {
+        clearOrgCache();
         setCurrentUser(null);
         setCurrentRetailer(null);
         setCart([]);
@@ -945,6 +947,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       await authService.signOut();
     } finally {
+      clearOrgCache();
       setCurrentUser(null);
       setCurrentRetailer(null);
       setCart([]);
