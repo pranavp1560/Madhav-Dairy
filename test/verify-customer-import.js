@@ -246,6 +246,108 @@ const updateRow = validateRow({
 assert(updateRow.status === 'VALID' && updateRow.action === 'UPDATE' && updateRow.matchedId === 'c1111111-1111-1111-1111-111111111111', 'Correctly matches existing customer ID for UPDATE');
 
 // -----------------------------------------------------------------------------
+// Test 5.1: Excel Hyperlink Object & Email Normalization Verification
+// -----------------------------------------------------------------------------
+console.log('\n[5.1] Email Normalization & Excel Hyperlink Object Parsing');
+function extractValueFromAny(val, fallbackText) {
+  if (val === null || val === undefined) {
+    return fallbackText && fallbackText !== '[object Object]' ? String(fallbackText).trim() : '';
+  }
+  if (typeof val === 'string') {
+    const s = val.trim();
+    return s.startsWith("'") ? s.slice(1).trim() : s;
+  }
+  if (typeof val === 'number' || typeof val === 'boolean') {
+    return String(val).trim();
+  }
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+  if (typeof val === 'object') {
+    if ('result' in val && val.result !== undefined && val.result !== null) {
+      return extractValueFromAny(val.result, fallbackText);
+    }
+    if ('hyperlink' in val || 'text' in val) {
+      if (val.text !== undefined && val.text !== null) {
+        const textVal = extractValueFromAny(val.text, fallbackText);
+        if (textVal) return textVal;
+      }
+      if (val.hyperlink) {
+        return String(val.hyperlink).replace(/^mailto:/i, '').trim();
+      }
+    }
+    if (Array.isArray(val.richText)) {
+      const combined = val.richText.map(chunk => chunk && chunk.text ? String(chunk.text) : '').join('').trim();
+      if (combined) return combined;
+    }
+    if (fallbackText && typeof fallbackText === 'string' && fallbackText.trim() !== '' && fallbackText !== '[object Object]') {
+      return fallbackText.trim();
+    }
+    const str = String(val);
+    if (str && str !== '[object Object]') {
+      return str.trim();
+    }
+  }
+  return fallbackText && fallbackText !== '[object Object]' ? String(fallbackText).trim() : '';
+}
+
+function cleanEmail(raw) {
+  if (raw === null || raw === undefined) return '';
+  let str = typeof raw === 'object' ? extractValueFromAny(raw) : String(raw);
+  str = str.trim();
+  if (str === '[object Object]') return '';
+  const mdMatch = str.match(/\[([^\]]+)\]\((?:mailto:)?([^)]+)\)/i);
+  if (mdMatch) {
+    if (mdMatch[2] && mdMatch[2].includes('@')) {
+      str = mdMatch[2].trim();
+    } else if (mdMatch[1] && mdMatch[1].includes('@')) {
+      str = mdMatch[1].trim();
+    }
+  }
+  str = str.replace(/^mailto:/i, '').trim();
+  const angleMatch = str.match(/<([^>]+)>/);
+  if (angleMatch && angleMatch[1].includes('@')) {
+    str = angleMatch[1].trim();
+  }
+  str = str.replace(/^["']|["']$/g, '').trim();
+  return str.toLowerCase();
+}
+
+// Check Excel hyperlink object
+const hyperlinkObj = { text: 'sham.dairy@example.com', hyperlink: 'mailto:sham.dairy@example.com' };
+assert(cleanEmail(hyperlinkObj) === 'sham.dairy@example.com', 'Extracts email from Excel hyperlink object without [object Object]');
+
+// Check Markdown link format
+const mdEmail = '[sham.dairy@example.com](mailto:sham.dairy@example.com)';
+assert(cleanEmail(mdEmail) === 'sham.dairy@example.com', 'Extracts email from Markdown mailto link');
+
+// Check RichText array format
+const richTextEmail = { richText: [{ text: 'sham.dairy@example.com' }] };
+assert(cleanEmail(richTextEmail) === 'sham.dairy@example.com', 'Extracts email from Excel rich text object');
+
+// Check mailto: prefix
+assert(cleanEmail('mailto:sham.dairy@example.com') === 'sham.dairy@example.com', 'Strips mailto: prefix cleanly');
+
+// Check formula result object
+const formulaEmail = { formula: 'HYPERLINK(...)', result: 'sham.dairy@example.com' };
+assert(cleanEmail(formulaEmail) === 'sham.dairy@example.com', 'Extracts email from formula result');
+
+// Test row validation with Excel hyperlink email
+const rowWithHyperlinkEmail = {
+  businessName: 'Sham Dairy Mart',
+  ownerName: 'Shamrao Kadam',
+  mobile: '9822998877',
+  email: hyperlinkObj,
+  address: 'Shop 5, Station Road'
+};
+const cleanedRowEmail = cleanEmail(rowWithHyperlinkEmail.email);
+const vEmail = validateRow({
+  ...rowWithHyperlinkEmail,
+  email: cleanedRowEmail
+}, existingMockCustomers, new Set());
+assert(vEmail.status === 'VALID' && vEmail.errors.length === 0, 'Row with Excel hyperlink email passes validation with 0 errors');
+
+// -----------------------------------------------------------------------------
 // Test 6: Live Supabase Database Execution (RPCs & Schema)
 // -----------------------------------------------------------------------------
 console.log('\n[6] Live Supabase Database RPC Verification');

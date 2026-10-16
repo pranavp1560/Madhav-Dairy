@@ -21,6 +21,118 @@ export function sanitizeCellValue(val: any): any {
   return val;
 }
 
+/**
+ * Safely extracts human-readable text from any ExcelJS cell value.
+ * Handles Excel hyperlinks, richText objects, formulas, dates, and primitives.
+ */
+export function extractValueFromAny(val: any, fallbackText?: string): string {
+  if (val === null || val === undefined) {
+    return fallbackText && fallbackText !== '[object Object]' ? String(fallbackText).trim() : '';
+  }
+
+  // Primitive strings, numbers, booleans
+  if (typeof val === 'string') {
+    const s = val.trim();
+    return s.startsWith("'") ? s.slice(1).trim() : s;
+  }
+  if (typeof val === 'number' || typeof val === 'boolean') {
+    return String(val).trim();
+  }
+
+  // Dates
+  if (val instanceof Date) {
+    return val.toISOString();
+  }
+
+  // Objects
+  if (typeof val === 'object') {
+    // 1. Formula result: { formula: string, result: any }
+    if ('result' in val && val.result !== undefined && val.result !== null) {
+      return extractValueFromAny(val.result, fallbackText);
+    }
+
+    // 2. Hyperlink object: { text: any, hyperlink: string }
+    if ('hyperlink' in val || 'text' in val) {
+      if (val.text !== undefined && val.text !== null) {
+        const textVal = extractValueFromAny(val.text, fallbackText);
+        if (textVal) return textVal;
+      }
+      if (val.hyperlink) {
+        return String(val.hyperlink).replace(/^mailto:/i, '').trim();
+      }
+    }
+
+    // 3. Rich text array: { richText: [ { text: string }, ... ] }
+    if (Array.isArray(val.richText)) {
+      const combined = val.richText
+        .map((chunk: any) => (chunk && chunk.text ? String(chunk.text) : ''))
+        .join('')
+        .trim();
+      if (combined) return combined;
+    }
+
+    // 4. Fallback text from cell.text if valid
+    if (fallbackText && typeof fallbackText === 'string' && fallbackText.trim() !== '' && fallbackText !== '[object Object]') {
+      return fallbackText.trim();
+    }
+
+    // 5. General object with custom toString that is not default "[object Object]"
+    const str = String(val);
+    if (str && str !== '[object Object]') {
+      return str.trim();
+    }
+  }
+
+  return fallbackText && fallbackText !== '[object Object]' ? String(fallbackText).trim() : '';
+}
+
+/**
+ * Normalizes email strings, stripping mailto: protocol, markdown links, or brackets
+ */
+export function cleanEmail(raw: any): string {
+  if (raw === null || raw === undefined) return '';
+  let str = typeof raw === 'object' ? extractValueFromAny(raw) : String(raw);
+  str = str.trim();
+
+  if (str === '[object Object]') return '';
+
+  // Handle Markdown link: [sham.dairy@example.com](mailto:sham.dairy@example.com)
+  const mdMatch = str.match(/\[([^\]]+)\]\((?:mailto:)?([^)]+)\)/i);
+  if (mdMatch) {
+    if (mdMatch[2] && mdMatch[2].includes('@')) {
+      str = mdMatch[2].trim();
+    } else if (mdMatch[1] && mdMatch[1].includes('@')) {
+      str = mdMatch[1].trim();
+    }
+  }
+
+  // Handle mailto: prefix
+  str = str.replace(/^mailto:/i, '').trim();
+
+  // Handle <email@domain.com>
+  const angleMatch = str.match(/<([^>]+)>/);
+  if (angleMatch && angleMatch[1].includes('@')) {
+    str = angleMatch[1].trim();
+  }
+
+  // Strip wrapping quotes
+  str = str.replace(/^["']|["']$/g, '').trim();
+
+  return str.toLowerCase();
+}
+
+/**
+ * Normalizes general text fields, stripping leading apostrophes from formula escapes
+ */
+export function cleanString(raw: any): string {
+  if (raw === null || raw === undefined) return '';
+  let str = typeof raw === 'object' ? extractValueFromAny(raw) : String(raw);
+  str = str.trim();
+  if (str === '[object Object]') return '';
+  if (str.startsWith("'")) str = str.slice(1).trim();
+  return str;
+}
+
 // Download helper for browser
 function downloadBufferAsFile(buffer: ArrayBuffer, filename: string, mimeType: string) {
   const blob = new Blob([buffer], { type: mimeType });
@@ -266,18 +378,13 @@ export const customerImportService = {
         const rowData: Record<string, any> = {};
         let hasContent = false;
 
-        row.eachCell((cell, colNumber) => {
-          const key = headerMap[colNumber];
-          if (key) {
-            let val = cell.value;
-            // Handle formula objects if any
-            if (val && typeof val === 'object' && 'result' in val) {
-              val = (val as any).result;
-            }
-            if (val !== undefined && val !== null && String(val).trim() !== '') {
-              hasContent = true;
-              rowData[key] = String(val).trim();
-            }
+        Object.entries(headerMap).forEach(([colNumberStr, key]) => {
+          const colNumber = Number(colNumberStr);
+          const cell = row.getCell(colNumber);
+          const extracted = extractValueFromAny(cell?.value, cell?.text);
+          if (extracted !== '') {
+            hasContent = true;
+            rowData[key] = extracted;
           }
         });
 
@@ -363,9 +470,10 @@ export const customerImportService = {
       const errors: string[] = [];
       const warnings: string[] = [];
 
-      const bName = String(raw.businessName || '').trim();
-      const oName = String(raw.ownerName || '').trim();
-      let mobile = String(raw.mobile || '').replace(/[^0-9]/g, '');
+      const bName = cleanString(raw.businessName);
+      const oName = cleanString(raw.ownerName);
+      const rawMobile = cleanString(raw.mobile);
+      let mobile = rawMobile.replace(/[^0-9]/g, '');
       if (mobile.length === 12 && mobile.startsWith('91')) {
         mobile = mobile.substring(2);
       }
@@ -373,17 +481,17 @@ export const customerImportService = {
         mobile = mobile.substring(1);
       }
 
-      const email = String(raw.email || '').trim();
-      const address = String(raw.address || '').trim();
-      const area = String(raw.area || '').trim();
-      const city = String(raw.city || '').trim() || 'Pune';
-      const state = String(raw.state || '').trim() || 'Maharashtra';
-      const pincode = String(raw.pincode || '').replace(/[^0-9]/g, '');
-      const gstin = String(raw.gstin || '').trim().toUpperCase();
-      const creditLimit = raw.creditLimit !== undefined ? Number(raw.creditLimit) : 50000;
-      const salesChannelName = String(raw.salesChannelName || '').trim();
-      const openingBalance = raw.openingBalance !== undefined ? Number(raw.openingBalance) : 0;
-      const customerId = String(raw.customerId || '').trim();
+      const email = cleanEmail(raw.email);
+      const address = cleanString(raw.address);
+      const area = cleanString(raw.area);
+      const city = cleanString(raw.city) || 'Pune';
+      const state = cleanString(raw.state) || 'Maharashtra';
+      const pincode = cleanString(raw.pincode).replace(/[^0-9]/g, '');
+      const gstin = cleanString(raw.gstin).toUpperCase();
+      const creditLimit = raw.creditLimit !== undefined && raw.creditLimit !== '' ? Number(cleanString(raw.creditLimit)) : 50000;
+      const salesChannelName = cleanString(raw.salesChannelName);
+      const openingBalance = raw.openingBalance !== undefined && raw.openingBalance !== '' ? Number(cleanString(raw.openingBalance)) : 0;
+      const customerId = cleanString(raw.customerId);
 
       // 1. Mandatory Field Checks
       if (!bName) errors.push('Business Name is required.');
@@ -391,7 +499,7 @@ export const customerImportService = {
       if (!mobile) {
         errors.push('Mobile Number is required.');
       } else if (mobile.length !== 10) {
-        errors.push(`Invalid phone number "${raw.mobile}". Must be 10 digits.`);
+        errors.push(`Invalid phone number "${rawMobile}". Must be 10 digits.`);
       }
       if (!address) errors.push('Address is required.');
 
