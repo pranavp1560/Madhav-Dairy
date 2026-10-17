@@ -68,14 +68,25 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
 }) => {
-  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, orders, paymentSubmissions, setSelectedRetailerId } = useDairy();
+  const { internalRole, internalView, setInternalView, currentUser, logout, expiryAlerts, notifications, orders, paymentSubmissions, setSelectedRetailerId } = useDairy();
   const { t } = useTranslation();
 
   const [isInventoryExpanded, setIsInventoryExpanded] = useState(
     ['inventory', 'raw_materials', 'stock_movements'].includes(internalView)
   );
 
-  const urgentExpiryCount = expiryAlerts.filter(a => a.daysRemaining <= 5).length;
+  // Count only active and unread expiry alerts within urgent threshold (disappears when marked read)
+  const urgentExpiryCount = expiryAlerts.filter(a => {
+    if (a.daysRemaining > 5) return false;
+    if (a.alertStatus === 'acknowledged' || a.alertStatus === 'resolved' || a.alertStatus === 'superseded') {
+      return false;
+    }
+    if (a.notificationId) {
+      const linkedNotif = notifications.find(n => n.id === a.notificationId);
+      if (linkedNotif && linkedNotif.read) return false;
+    }
+    return true;
+  }).length;
   const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
   const openSubmissionsCount = paymentSubmissions.filter(s => s.status === 'open').length;
 

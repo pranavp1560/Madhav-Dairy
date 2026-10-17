@@ -522,6 +522,8 @@ interface DairyContextType {
   refreshExpiryData: () => Promise<void>;
   markNotificationRead: (id: string) => Promise<void>;
   markAllNotificationsRead: (recipientType: 'customer' | 'internal') => Promise<void>;
+  markExpiryAlertRead: (alertId: string) => Promise<void>;
+  markAllExpiryAlertsRead: () => Promise<void>;
 
   // Toasts
   toasts: Toast[];
@@ -2420,15 +2422,65 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
-  // Notifications
+  // Notifications & Expiry Alert Read Synchronization
   const markNotificationRead = async (id: string) => {
-    await notificationService.markAsRead(id);
+    // 1. Optimistic state updates
+    const targetNotif = notifications.find(n => n.id === id);
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+    
+    // Also acknowledge linked expiry alerts
+    setExpiryAlerts(prev => prev.map(a => {
+      if (a.notificationId === id || (targetNotif?.referenceType === 'batches' && a.batchId === targetNotif?.referenceId)) {
+        return { ...a, alertStatus: 'acknowledged' };
+      }
+      return a;
+    }));
+
+    try {
+      await notificationService.markAsRead(id);
+    } catch (err: any) {
+      console.warn('Failed to persist notification read:', err.message);
+    }
   };
 
-  const markAllNotificationsRead = async (recipientType: 'customer' | 'internal') => {
-    await notificationService.markAllAsRead();
+  const markAllNotificationsRead = async (recipientType: 'customer' | 'internal' = 'internal') => {
     setNotifications(prev => prev.map(n => n.recipientType === recipientType ? { ...n, read: true } : n));
+    setExpiryAlerts(prev => prev.map(a => ({ ...a, alertStatus: 'acknowledged' })));
+
+    try {
+      await notificationService.markAllAsRead(recipientType);
+      addToast('All notifications marked as read', 'success');
+    } catch (err: any) {
+      console.warn('Failed to persist markAllNotificationsRead:', err.message);
+    }
+  };
+
+  const markExpiryAlertRead = async (alertId: string) => {
+    const targetAlert = expiryAlerts.find(a => a.id === alertId);
+    setExpiryAlerts(prev => prev.map(a => a.id === alertId ? { ...a, alertStatus: 'acknowledged' } : a));
+
+    if (targetAlert?.notificationId) {
+      setNotifications(prev => prev.map(n => n.id === targetAlert.notificationId ? { ...n, read: true } : n));
+    }
+
+    try {
+      await expiryService.markAlertAsRead(alertId);
+      addToast('Alert marked as read', 'info');
+    } catch (err: any) {
+      console.warn('Failed to persist markExpiryAlertRead:', err.message);
+    }
+  };
+
+  const markAllExpiryAlertsRead = async () => {
+    setExpiryAlerts(prev => prev.map(a => ({ ...a, alertStatus: 'acknowledged' })));
+    setNotifications(prev => prev.map(n => n.type === 'expiry' ? { ...n, read: true } : n));
+
+    try {
+      await expiryService.markAllAlertsAsRead();
+      addToast('All expiry alerts marked as read', 'success');
+    } catch (err: any) {
+      console.warn('Failed to persist markAllExpiryAlertsRead:', err.message);
+    }
   };
 
   // Payment Details & Customer Verification Operations
@@ -2728,6 +2780,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         refreshExpiryData,
         markNotificationRead,
         markAllNotificationsRead,
+        markExpiryAlertRead,
+        markAllExpiryAlertsRead,
 
         // Payment Details & Customer Verification Submissions
         paymentMethods,

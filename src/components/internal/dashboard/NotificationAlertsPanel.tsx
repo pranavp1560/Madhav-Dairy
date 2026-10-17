@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useDairy } from '../../../context/DairyContext';
 import {
   Bell,
   AlertTriangle,
@@ -39,6 +40,15 @@ export const NotificationAlertsPanel: React.FC<NotificationAlertsPanelProps> = (
   alerts,
   onNavigate,
 }) => {
+  const {
+    markNotificationRead,
+    markAllNotificationsRead,
+    markExpiryAlertRead,
+    markAllExpiryAlertsRead,
+    expiryAlerts,
+    notifications,
+  } = useDairy();
+
   const [filter, setFilter] = useState<'all' | 'unread' | 'critical' | 'warning'>('all');
   const [readIds, setReadIds] = useState<Set<string>>(() => {
     try {
@@ -58,33 +68,60 @@ export const NotificationAlertsPanel: React.FC<NotificationAlertsPanelProps> = (
     }
   }, [readIds]);
 
-  const handleMarkAsRead = (id: string, e: React.MouseEvent) => {
+  const isAlertRead = (a: DashboardAlertItem) => {
+    if (readIds.has(a.id)) return true;
+    if (a.referenceType === 'batch' && a.referenceId) {
+      const ea = expiryAlerts.find(x => x.batchId === a.referenceId);
+      if (ea && (ea.alertStatus === 'acknowledged' || ea.alertStatus === 'resolved' || ea.alertStatus === 'superseded')) {
+        return true;
+      }
+      const notif = notifications.find(n => n.referenceId === a.referenceId);
+      if (notif && notif.read) return true;
+    }
+    return false;
+  };
+
+  const handleMarkAsRead = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setReadIds(prev => {
       const next = new Set(prev);
       next.add(id);
       return next;
     });
+
+    const targetAlert = alerts.find(a => a.id === id);
+    if (targetAlert?.referenceType === 'batch' && targetAlert.referenceId) {
+      const matchingAlerts = expiryAlerts.filter(ea => ea.batchId === targetAlert.referenceId);
+      for (const ma of matchingAlerts) {
+        await markExpiryAlertRead(ma.id);
+      }
+      const matchingNotifs = notifications.filter(n => n.referenceId === targetAlert.referenceId && !n.read);
+      for (const mn of matchingNotifs) {
+        await markNotificationRead(mn.id);
+      }
+    }
   };
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
     setReadIds(new Set(alerts.map(a => a.id)));
+    await markAllNotificationsRead('internal');
+    await markAllExpiryAlertsRead();
   };
 
   // Filter alerts
   const filteredAlerts = useMemo(() => {
     return alerts.filter(a => {
-      const isRead = readIds.has(a.id);
+      const isRead = isAlertRead(a);
       if (filter === 'unread') return !isRead;
       if (filter === 'critical') return a.severity === 'critical';
       if (filter === 'warning') return a.severity === 'warning';
       return true; // 'all'
     });
-  }, [alerts, filter, readIds]);
+  }, [alerts, filter, readIds, expiryAlerts, notifications]);
 
   const unreadCount = useMemo(() => {
-    return alerts.filter(a => !readIds.has(a.id)).length;
-  }, [alerts, readIds]);
+    return alerts.filter(a => !isAlertRead(a)).length;
+  }, [alerts, readIds, expiryAlerts, notifications]);
 
   const criticalCount = useMemo(() => {
     return alerts.filter(a => a.severity === 'critical').length;
@@ -173,7 +210,7 @@ export const NotificationAlertsPanel: React.FC<NotificationAlertsPanelProps> = (
           </div>
         ) : (
           filteredAlerts.map(alert => {
-            const isRead = readIds.has(alert.id);
+            const isRead = isAlertRead(alert);
             const isCritical = alert.severity === 'critical';
             const isWarning = alert.severity === 'warning';
 

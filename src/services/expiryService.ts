@@ -279,6 +279,7 @@ export const expiryService = {
         status,
         alert_type,
         notification_id,
+        acknowledged_at,
         generated_at,
         batches(
           batch_number,
@@ -296,33 +297,76 @@ export const expiryService = {
 
     if (error) throw error;
 
-    return (alerts || []).map((a: any): ExpiryAlertItem => {
-      const b = a.batches;
-      const prod = a.products || b?.product_skus?.products;
-      const expDate = a.expiry_date || b?.expiry_date || '';
-      const daysRemaining = calculateDaysRemaining(expDate);
+    const now = Date.now();
+    const twentyFourHoursAgo = now - 24 * 60 * 60 * 1000;
 
-      return {
-        id: a.id,
-        batchId: a.batch_id,
-        batchNumber: b?.batch_number || 'BATCH-STD',
-        productId: prod?.id || a.product_id || '',
-        productName: prod?.name || 'Dairy Product',
-        retailerId: a.customers?.id || undefined,
-        retailerName: a.customers?.business_name || undefined,
-        location: a.locations?.name || (a.customers ? 'Retail Shelf' : 'Cold Storage'),
-        quantity: Number(a.remaining_quantity || a.quantity || 0),
-        productionDate: b?.production_date || '',
-        expiryDate: expDate,
-        daysRemaining,
-        severity: a.severity as ExpirySeverity,
-        alertType: a.alert_type as 'staff' | 'customer',
-        thresholdDays: a.threshold_days,
-        alertStatus: a.status as any,
-        notificationId: a.notification_id || undefined,
-        generatedAt: a.generated_at,
-      };
-    });
+    return (alerts || [])
+      .filter((a: any) => {
+        // Exclude alerts acknowledged more than 24 hours ago
+        if (a.acknowledged_at && new Date(a.acknowledged_at).getTime() < twentyFourHoursAgo) {
+          return false;
+        }
+        return true;
+      })
+      .map((a: any): ExpiryAlertItem => {
+        const b = a.batches;
+        const prod = a.products || b?.product_skus?.products;
+        const expDate = a.expiry_date || b?.expiry_date || '';
+        const daysRemaining = calculateDaysRemaining(expDate);
+
+        return {
+          id: a.id,
+          batchId: a.batch_id,
+          batchNumber: b?.batch_number || 'BATCH-STD',
+          productId: prod?.id || a.product_id || '',
+          productName: prod?.name || 'Dairy Product',
+          retailerId: a.customers?.id || undefined,
+          retailerName: a.customers?.business_name || undefined,
+          location: a.locations?.name || (a.customers ? 'Retail Shelf' : 'Cold Storage'),
+          quantity: Number(a.remaining_quantity || a.quantity || 0),
+          productionDate: b?.production_date || '',
+          expiryDate: expDate,
+          daysRemaining,
+          severity: a.severity as ExpirySeverity,
+          alertType: a.alert_type as 'staff' | 'customer',
+          thresholdDays: a.threshold_days,
+          alertStatus: a.status as any,
+          notificationId: a.notification_id || undefined,
+          generatedAt: a.generated_at,
+        };
+      });
+  },
+
+  /**
+   * Marks a specific expiry alert as acknowledged/read.
+   */
+  async markAlertAsRead(alertId: string): Promise<void> {
+    try {
+      const { error } = await supabase.rpc('mark_expiry_alert_as_read', {
+        p_alert_id: alertId,
+      });
+      if (error) throw error;
+    } catch {
+      await supabase
+        .from('expiry_alerts')
+        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .eq('id', alertId);
+    }
+  },
+
+  /**
+   * Marks all active expiry alerts as acknowledged/read.
+   */
+  async markAllAlertsAsRead(): Promise<void> {
+    try {
+      const { error } = await supabase.rpc('mark_all_expiry_alerts_as_read');
+      if (error) throw error;
+    } catch {
+      await supabase
+        .from('expiry_alerts')
+        .update({ status: 'acknowledged', acknowledged_at: new Date().toISOString() })
+        .in('status', ['active', 'expired']);
+    }
   },
 
   /**
