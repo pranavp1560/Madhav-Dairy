@@ -38,6 +38,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const {
     internalRole,
     setInternalView,
+    setOrdersDateFilter,
     batches,
     orders,
     retailers,
@@ -87,8 +88,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
   // Handle Navigation
   const handleNavigate = useCallback((view: string, entityId?: string) => {
-    if (view === 'orders' && entityId) {
-      setSelectedOrderId(entityId);
+    if (view === 'orders') {
+      if (entityId === 'today-orders' || entityId?.startsWith('today')) {
+        setOrdersDateFilter('today');
+      } else if (entityId) {
+        setSelectedOrderId(entityId);
+      }
     } else if ((view === 'batches' || view === 'expiry') && entityId) {
       setSelectedBatchId(entityId);
       onSelectBatch(entityId);
@@ -96,7 +101,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       onSelectRetailer(entityId);
     }
     setInternalView(view);
-  }, [setInternalView, setSelectedOrderId, setSelectedBatchId, onSelectBatch, onSelectRetailer]);
+  }, [setInternalView, setOrdersDateFilter, setSelectedOrderId, setSelectedBatchId, onSelectBatch, onSelectRetailer]);
 
   // ===========================================================================
   // 1. FILTERED DATASETS
@@ -463,7 +468,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       }
     });
 
-    // Alert Group 4: Orders Waiting for Fulfillment Action
+    // Alert Group 4: Today's Orders Alert (Expected today)
+    const todayExpectedOrders = orders.filter(o => {
+      if (o.status === 'cancelled') return false;
+      const expDate = (o.deliveryDate || o.orderDate)?.split('T')[0];
+      return expDate === todayStr;
+    });
+
+    if (todayExpectedOrders.length > 0) {
+      const pendingToday = todayExpectedOrders.filter(o => o.status === 'pending');
+      const confirmedToday = todayExpectedOrders.filter(o => o.status === 'confirmed');
+      const dispatchedToday = todayExpectedOrders.filter(o => o.status === 'dispatched');
+      const deliveredToday = todayExpectedOrders.filter(o => o.status === 'delivered');
+      const todayTotal = todayExpectedOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+
+      list.push({
+        id: 'alert-orders-today-deliveries',
+        severity: pendingToday.length > 0 ? 'critical' : confirmedToday.length > 0 ? 'warning' : 'info',
+        title: `Today's Orders Alert: ${todayExpectedOrders.length} Order(s) Scheduled`,
+        message: `${todayExpectedOrders.length} order(s) expected today totaling ₹${todayTotal.toLocaleString('en-IN')}${
+          pendingToday.length > 0 ? ` (${pendingToday.length} pending approval)` : ''
+        }${confirmedToday.length > 0 ? ` (${confirmedToday.length} ready to dispatch)` : ''}${
+          dispatchedToday.length + deliveredToday.length > 0 ? ` (${dispatchedToday.length + deliveredToday.length} dispatched/delivered)` : ''
+        }. Click to review today's orders.`,
+        referenceType: 'order',
+        referenceId: 'today-orders',
+        referenceLabel: `Today (${todayExpectedOrders.length} orders)`,
+        timestamp: 'Today',
+        targetView: 'orders',
+      });
+    }
+
+    // Alert Group 5: Orders Waiting for Fulfillment Action
     orders.forEach(o => {
       if (o.status === 'pending') {
         list.push({

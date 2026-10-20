@@ -89,6 +89,8 @@ interface DairyContextType {
   setSelectedOrderId: (id: string | null) => void;
   selectedInvoiceId: string | null;
   setSelectedInvoiceId: (id: string | null) => void;
+  ordersDateFilter: string;
+  setOrdersDateFilter: (f: string) => void;
 
   // Supabase Auth & Session Profile
   currentUser: UserSessionProfile | null;
@@ -541,6 +543,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [selectedRetailerId, setSelectedRetailerId] = useState<string | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [ordersDateFilter, setOrdersDateFilter] = useState<string>('all');
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
 
   const navigateToCreateOrder = (order?: Order | null) => {
@@ -2646,6 +2649,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setSelectedOrderId,
         selectedInvoiceId,
         setSelectedInvoiceId,
+        ordersDateFilter,
+        setOrdersDateFilter,
 
         currentUser,
         login,

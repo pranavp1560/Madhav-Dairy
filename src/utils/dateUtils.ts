@@ -74,3 +74,54 @@ export function formatCalendarDate(dateStr: string): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${d} ${months[m - 1]} ${y}`;
 }
+
+/**
+ * Returns tomorrow's calendar date in YYYY-MM-DD format.
+ */
+export function getTomorrowDateString(): string {
+  const now = new Date();
+  now.setDate(now.getDate() + 1);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns date string for N days ago in YYYY-MM-DD format.
+ */
+export function getDaysAgoDateString(days: number): string {
+  const now = new Date();
+  now.setDate(now.getDate() - days);
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * Returns start and end date strings for current month in YYYY-MM-DD format.
+ */
+export function getMonthBoundsDateStrings(): { start: string; end: string } {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+  const format = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  return { start: format(start), end: format(end) };
+}
+
+/**
+ * Strips timestamp or ISO format to pure YYYY-MM-DD.
+ */
+export function cleanDateString(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  return dateStr.split('T')[0];
+}
+

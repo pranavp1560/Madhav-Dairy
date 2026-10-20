@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
@@ -6,12 +6,24 @@ import { Drawer } from '../ui/Drawer';
 import { Order, OrderStatus } from '../../types/dairy';
 import { 
   ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, 
-  Truck, Plus, Pencil, CheckCircle2, FileText, CheckSquare, Square, AlertCircle, Clock
+  Truck, Plus, Pencil, CheckCircle2, FileText, CheckSquare, Square, AlertCircle, Clock,
+  CalendarDays, Sparkles, X, ChevronDown, Check, RefreshCw, XCircle, ChevronRight,
+  TrendingUp, AlertTriangle
 } from 'lucide-react';
+import { 
+  getTodayDateString, 
+  getTomorrowDateString, 
+  getDaysAgoDateString, 
+  getMonthBoundsDateStrings,
+  cleanDateString,
+  formatCalendarDate
+} from '../../utils/dateUtils';
 
 interface OrdersViewProps {
   onSelectRetailer: (id: string) => void;
 }
+
+export type OrderDateFilterType = 'all' | 'today' | 'tomorrow' | 'last7days' | 'this_month';
 
 export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const { 
@@ -26,12 +38,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     bulkDispatchOrders,
     setInternalView,
     setSelectedInvoiceId,
+    selectedOrderId,
+    setSelectedOrderId,
     navigateToCreateOrder,
+    ordersDateFilter,
+    setOrdersDateFilter,
   } = useDairy();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRetailer, setSelectedRetailer] = useState('all');
-  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [dateFilter, setDateFilter] = useState<OrderDateFilterType>(
+    (ordersDateFilter as OrderDateFilterType) || 'all'
+  );
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
 
   // Bulk selection & operation states
@@ -39,6 +58,75 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const [isBulkProcessing, setIsBulkProcessing] = useState(false);
   const [generatingInvoiceId, setGeneratingInvoiceId] = useState<string | null>(null);
   const [isGeneratingDrawerInvoice, setIsGeneratingDrawerInvoice] = useState(false);
+
+  // Sync date filter if requested from outside (e.g. Dashboard alert click)
+  useEffect(() => {
+    if (ordersDateFilter && ['all', 'today', 'tomorrow', 'last7days', 'this_month'].includes(ordersDateFilter)) {
+      setDateFilter(ordersDateFilter as OrderDateFilterType);
+    }
+  }, [ordersDateFilter]);
+
+  // Sync selected order if requested from outside
+  useEffect(() => {
+    if (selectedOrderId) {
+      const match = orders.find(o => o.id === selectedOrderId);
+      if (match) {
+        setViewingOrder(match);
+      }
+    }
+  }, [selectedOrderId, orders]);
+
+  // Date constants (local timezone YYYY-MM-DD)
+  const todayStr = useMemo(() => getTodayDateString(), []);
+  const tomorrowStr = useMemo(() => getTomorrowDateString(), []);
+  const sevenDaysAgoStr = useMemo(() => getDaysAgoDateString(6), []);
+  const { start: monthStartStr, end: monthEndStr } = useMemo(() => getMonthBoundsDateStrings(), []);
+
+  // Helper to extract clean expected delivery date (fallback to orderDate)
+  const getOrderExpectedDate = (order: Order): string => {
+    return cleanDateString(order.deliveryDate || order.orderDate);
+  };
+
+  // Pre-calculate Today's and Tomorrow's expected orders
+  const todayOrders = useMemo(() => {
+    return orders.filter(o => getOrderExpectedDate(o) === todayStr && o.status !== 'cancelled');
+  }, [orders, todayStr]);
+
+  const todayTotalAmount = useMemo(() => {
+    return todayOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  }, [todayOrders]);
+
+  const todayPendingCount = useMemo(() => {
+    return todayOrders.filter(o => o.status === 'pending').length;
+  }, [todayOrders]);
+
+  const todayConfirmedCount = useMemo(() => {
+    return todayOrders.filter(o => o.status === 'confirmed').length;
+  }, [todayOrders]);
+
+  const todayDispatchedCount = useMemo(() => {
+    return todayOrders.filter(o => o.status === 'dispatched' || o.status === 'delivered').length;
+  }, [todayOrders]);
+
+  const tomorrowOrders = useMemo(() => {
+    return orders.filter(o => getOrderExpectedDate(o) === tomorrowStr && o.status !== 'cancelled');
+  }, [orders, tomorrowStr]);
+
+  const tomorrowTotalAmount = useMemo(() => {
+    return tomorrowOrders.reduce((sum, o) => sum + o.totalAmount, 0);
+  }, [tomorrowOrders]);
+
+  const tomorrowPendingCount = useMemo(() => {
+    return tomorrowOrders.filter(o => o.status === 'pending').length;
+  }, [tomorrowOrders]);
+
+  const tomorrowConfirmedCount = useMemo(() => {
+    return tomorrowOrders.filter(o => o.status === 'confirmed').length;
+  }, [tomorrowOrders]);
+
+  const allPendingCount = useMemo(() => {
+    return orders.filter(o => o.status === 'pending').length;
+  }, [orders]);
 
   const handleOpenCreateOrder = () => {
     navigateToCreateOrder(null);
@@ -48,15 +136,57 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     navigateToCreateOrder(order);
   };
 
-  const filteredOrders = orders.filter(o => {
-    const matchesSearch =
-      o.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.retailerName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRetailer = selectedRetailer === 'all' || o.retailerId === selectedRetailer;
-    const matchesStatus = selectedStatus === 'all' || o.status === selectedStatus;
-    return matchesSearch && matchesRetailer && matchesStatus;
-  });
+  // Reset all active filters
+  const handleResetFilters = () => {
+    setSearchQuery('');
+    setSelectedRetailer('all');
+    setSelectedStatus('all');
+    setDateFilter('all');
+    if (setOrdersDateFilter) {
+      setOrdersDateFilter('all');
+    }
+  };
 
+  const isAnyFilterActive = searchQuery !== '' || selectedRetailer !== 'all' || selectedStatus !== 'all' || dateFilter !== 'all';
+
+  // Filtered orders collection
+  const filteredOrders = useMemo(() => {
+    return orders.filter(o => {
+      // 1. Search Query
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        q === '' ||
+        o.orderNumber.toLowerCase().includes(q) ||
+        o.retailerName.toLowerCase().includes(q);
+
+      // 2. Retailer Filter
+      const matchesRetailer = selectedRetailer === 'all' || o.retailerId === selectedRetailer;
+
+      // 3. Status Filter
+      const matchesStatus = selectedStatus === 'all' || o.status === selectedStatus;
+
+      // 4. Date Range Filter (Filtered by Expected Delivery Date, with fallback to Order Placement Date)
+      const expDate = getOrderExpectedDate(o);
+      const placedDate = cleanDateString(o.orderDate);
+      let matchesDate = true;
+
+      if (dateFilter === 'today') {
+        matchesDate = expDate === todayStr;
+      } else if (dateFilter === 'tomorrow') {
+        matchesDate = expDate === tomorrowStr;
+      } else if (dateFilter === 'last7days') {
+        matchesDate = (expDate >= sevenDaysAgoStr && expDate <= todayStr) || 
+                      (placedDate >= sevenDaysAgoStr && placedDate <= todayStr);
+      } else if (dateFilter === 'this_month') {
+        matchesDate = (expDate >= monthStartStr && expDate <= monthEndStr) ||
+                      (placedDate >= monthStartStr && placedDate <= monthEndStr);
+      }
+
+      return matchesSearch && matchesRetailer && matchesStatus && matchesDate;
+    });
+  }, [orders, searchQuery, selectedRetailer, selectedStatus, dateFilter, todayStr, tomorrowStr, sevenDaysAgoStr, monthStartStr, monthEndStr]);
+
+  // Bulk selection handling
   const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id));
   const someFilteredSelected = filteredOrders.some(o => selectedOrderIds.includes(o.id));
 
@@ -76,7 +206,6 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
 
   // Selected orders grouped by status for bulk actions
   const selectedPendingIds = filteredOrders.filter(o => selectedOrderIds.includes(o.id) && o.status === 'pending').map(o => o.id);
-  const selectedConfirmedIds = filteredOrders.filter(o => selectedOrderIds.includes(o.id) && o.status === 'confirmed').map(o => o.id);
   const selectedConfirmedWithoutInvoiceIds = filteredOrders
     .filter(o => selectedOrderIds.includes(o.id) && o.status === 'confirmed' && !o.invoiceId)
     .map(o => o.id);
@@ -117,18 +246,30 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
 
   return (
     <div className="space-y-4">
-      {/* Header bar */}
+      {/* 1. Header bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
         <div>
-          <h2 className="text-base font-bold text-slate-900">Retailer Sales Orders</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-slate-900">Retailer Sales Orders</h2>
+            <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+              {orders.length} Total
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Operational Lifecycle: <span className="font-semibold text-amber-700">Pending</span> &rarr; <span className="font-semibold text-blue-700">Confirmed</span> &rarr; <span className="font-semibold text-sky-700">Generate Invoice (Ready)</span> &rarr; <span className="font-semibold text-indigo-700">Delivery Trip (Dispatched)</span> &rarr; <span className="font-semibold text-emerald-700">Delivered</span>
+            Operational Lifecycle: <span className="font-semibold text-amber-700">Pending</span> &rarr; <span className="font-semibold text-blue-700">Confirmed</span> &rarr; <span className="font-semibold text-sky-700">Generate Invoice (Ready)</span> &rarr; <span className="font-semibold text-indigo-700">Trip Dispatch</span> &rarr; <span className="font-semibold text-emerald-700">Delivered</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-blue-700 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-200">
-            {orders.length} Total Orders
-          </span>
+          {isAnyFilterActive && (
+            <button
+              onClick={handleResetFilters}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+              title="Reset all search, date and status filters"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Reset Filters</span>
+            </button>
+          )}
           <Button
             variant="primary"
             size="sm"
@@ -140,46 +281,404 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
         </div>
       </div>
 
-      {/* Filters and Search */}
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full md:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search Order Number or Retailer..."
-            className="w-full text-xs pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white transition-colors"
-          />
+      {/* 2. Interactive KPI & Alert Cards for Today's and Tomorrow's Orders */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Card 1: Today's Orders KPI / Alert Box */}
+        <div
+          onClick={() => {
+            const next = dateFilter === 'today' ? 'all' : 'today';
+            setDateFilter(next);
+            if (setOrdersDateFilter) setOrdersDateFilter(next);
+          }}
+          className={`p-4 rounded-xl border transition-all cursor-pointer relative group flex flex-col justify-between ${
+            dateFilter === 'today'
+              ? 'bg-blue-50/90 border-blue-500 shadow-md ring-2 ring-blue-500/25'
+              : 'bg-white border-slate-200 hover:border-blue-300 hover:shadow-xs'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-blue-800 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                <span>Today&apos;s Orders</span>
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                dateFilter === 'today'
+                  ? 'bg-blue-600 text-white font-mono-numbers'
+                  : 'bg-blue-100/80 text-blue-800'
+              }`}>
+                {dateFilter === 'today' ? 'Active Filter' : 'Expected Today'}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900 font-mono-numbers tracking-tight">
+                {todayOrders.length}
+              </span>
+              <span className="text-xs font-bold text-blue-700 font-mono-numbers">
+                ₹{todayTotalAmount.toLocaleString('en-IN')}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Scheduled for delivery today ({formatCalendarDate(todayStr)})
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            {todayPendingCount > 0 ? (
+              <span className="text-amber-700 font-semibold flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                <span>{todayPendingCount} pending confirmation</span>
+              </span>
+            ) : todayOrders.length > 0 ? (
+              <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{todayConfirmedCount} confirmed • {todayDispatchedCount} on route</span>
+              </span>
+            ) : (
+              <span className="text-slate-400">No deliveries today</span>
+            )}
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 transition-colors ${
+              dateFilter === 'today' ? 'text-blue-700 font-extrabold' : 'text-slate-400 group-hover:text-blue-600'
+            }`}>
+              <span>{dateFilter === 'today' ? 'Viewing' : 'Click to View'}</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 w-full md:w-auto">
-          <select
-            value={selectedRetailer}
-            onChange={e => setSelectedRetailer(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
-          >
-            <option value="all">All Retailers</option>
-            {retailers.map(r => (
-              <option key={r.id} value={r.id}>{r.businessName}</option>
-            ))}
-          </select>
+        {/* Card 2: Tomorrow's Orders KPI / Alert Box */}
+        <div
+          onClick={() => {
+            const next = dateFilter === 'tomorrow' ? 'all' : 'tomorrow';
+            setDateFilter(next);
+            if (setOrdersDateFilter) setOrdersDateFilter(next);
+          }}
+          className={`p-4 rounded-xl border transition-all cursor-pointer relative group flex flex-col justify-between ${
+            dateFilter === 'tomorrow'
+              ? 'bg-indigo-50/90 border-indigo-500 shadow-md ring-2 ring-indigo-500/25'
+              : 'bg-white border-slate-200 hover:border-indigo-300 hover:shadow-xs'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
+                <Truck className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Tomorrow&apos;s Orders</span>
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                dateFilter === 'tomorrow'
+                  ? 'bg-indigo-600 text-white font-mono-numbers'
+                  : 'bg-indigo-100/80 text-indigo-800'
+              }`}>
+                {dateFilter === 'tomorrow' ? 'Active Filter' : 'Expected Tomorrow'}
+              </span>
+            </div>
 
-          <select
-            value={selectedStatus}
-            onChange={e => setSelectedStatus(e.target.value)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer"
-          >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="dispatched">Dispatched</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900 font-mono-numbers tracking-tight">
+                {tomorrowOrders.length}
+              </span>
+              <span className="text-xs font-bold text-indigo-700 font-mono-numbers">
+                ₹{tomorrowTotalAmount.toLocaleString('en-IN')}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Advance dispatch planned ({formatCalendarDate(tomorrowStr)})
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            {tomorrowOrders.length > 0 ? (
+              <span className="text-indigo-700 font-semibold">
+                {tomorrowPendingCount} pending • {tomorrowConfirmedCount} confirmed
+              </span>
+            ) : (
+              <span className="text-slate-400">No advance orders scheduled</span>
+            )}
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 transition-colors ${
+              dateFilter === 'tomorrow' ? 'text-indigo-700 font-extrabold' : 'text-slate-400 group-hover:text-indigo-600'
+            }`}>
+              <span>{dateFilter === 'tomorrow' ? 'Viewing' : 'Click to View'}</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: Pending Approval Box */}
+        <div
+          onClick={() => setSelectedStatus(prev => prev === 'pending' ? 'all' : 'pending')}
+          className={`p-4 rounded-xl border transition-all cursor-pointer relative group flex flex-col justify-between ${
+            selectedStatus === 'pending'
+              ? 'bg-amber-50/90 border-amber-500 shadow-md ring-2 ring-amber-500/25'
+              : 'bg-white border-slate-200 hover:border-amber-300 hover:shadow-xs'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Pending Approval</span>
+              </span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                selectedStatus === 'pending'
+                  ? 'bg-amber-600 text-white'
+                  : 'bg-amber-100 text-amber-800'
+              }`}>
+                {allPendingCount > 0 ? 'Action Needed' : 'All Clear'}
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900 font-mono-numbers tracking-tight">
+                {allPendingCount}
+              </span>
+              <span className="text-xs font-semibold text-slate-500">
+                Awaiting staff verification
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Requires confirmation & batch stock lock
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="text-slate-600 font-medium">Lifecycle Stage 1</span>
+            <span className={`text-[10px] font-bold flex items-center gap-0.5 transition-colors ${
+              selectedStatus === 'pending' ? 'text-amber-700 font-extrabold' : 'text-slate-400 group-hover:text-amber-700'
+            }`}>
+              <span>{selectedStatus === 'pending' ? 'Filtered' : 'Filter Pending'}</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: All Orders Total Box */}
+        <div
+          onClick={handleResetFilters}
+          className={`p-4 rounded-xl border transition-all cursor-pointer relative group flex flex-col justify-between ${
+            !isAnyFilterActive
+              ? 'bg-slate-50/90 border-slate-400 shadow-sm'
+              : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-xs'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <ShoppingCart className="w-3.5 h-3.5 text-slate-600" />
+                <span>Total Orders</span>
+              </span>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+                All Lifecycle
+              </span>
+            </div>
+
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl font-black text-slate-900 font-mono-numbers tracking-tight">
+                {orders.length}
+              </span>
+              <span className="text-xs font-bold text-slate-700 font-mono-numbers">
+                ₹{orders.reduce((sum, o) => sum + o.totalAmount, 0).toLocaleString('en-IN')}
+              </span>
+            </div>
+
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              Lifetime sales order repository
+            </p>
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px]">
+            <span className="text-slate-500">
+              {filteredOrders.length !== orders.length ? `Showing ${filteredOrders.length} of ${orders.length}` : 'All orders visible'}
+            </span>
+            <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-900 flex items-center gap-0.5">
+              <span>View All</span>
+              <ChevronRight className="w-3 h-3" />
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Bulk Operations Toolbar */}
+      {/* 3. Comprehensive Filter Bar (Status, Date Range, Retailer, Search) */}
+      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+        {/* Row 1: Search & Retailer Select */}
+        <div className="flex flex-col md:flex-row gap-3 items-center justify-between">
+          <div className="relative w-full md:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search Order No. or Retailer..."
+              className="w-full text-xs pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-blue-600 focus:bg-white transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                title="Clear search"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <select
+              value={selectedRetailer}
+              onChange={e => setSelectedRetailer(e.target.value)}
+              className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-800 focus:outline-none focus:border-blue-600 cursor-pointer w-full md:w-auto font-medium"
+            >
+              <option value="all">All Retailers ({retailers.length})</option>
+              {retailers.map(r => (
+                <option key={r.id} value={r.id}>{r.businessName}</option>
+              ))}
+            </select>
+
+            {isAnyFilterActive && (
+              <button
+                onClick={handleResetFilters}
+                className="text-xs text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-2 rounded-lg font-semibold transition-colors flex items-center gap-1 border border-rose-200 whitespace-nowrap"
+                title="Reset all filters"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                <span>Reset</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Row 2: Date Range Pills & Status Filter Pills */}
+        <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+          {/* Date Range Selection (Today, Tomorrow, Last 7 Days, This Month, All) */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <span>Date:</span>
+            </span>
+
+            {[
+              { id: 'all', label: 'All Dates' },
+              { id: 'today', label: 'Today', count: todayOrders.length, highlight: true },
+              { id: 'tomorrow', label: 'Tomorrow', count: tomorrowOrders.length, highlight: true },
+              { id: 'last7days', label: 'Last 7 Days' },
+              { id: 'this_month', label: 'This Month' },
+            ].map(tab => {
+              const isSelected = dateFilter === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    const next = tab.id as OrderDateFilterType;
+                    setDateFilter(next);
+                    if (setOrdersDateFilter) setOrdersDateFilter(next);
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count !== undefined && tab.count > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono-numbers font-bold ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : tab.highlight
+                        ? 'bg-blue-200 text-blue-900'
+                        : 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Status Selection (All, Pending, Confirmed, Dispatched, Delivered, Cancelled) */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mr-1 flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <span>Status:</span>
+            </span>
+
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'pending', label: 'Pending', count: orders.filter(o => o.status === 'pending').length, color: 'text-amber-700 bg-amber-100' },
+              { id: 'confirmed', label: 'Confirmed', count: orders.filter(o => o.status === 'confirmed').length, color: 'text-blue-700 bg-blue-100' },
+              { id: 'dispatched', label: 'Dispatched', count: orders.filter(o => o.status === 'dispatched').length, color: 'text-indigo-700 bg-indigo-100' },
+              { id: 'delivered', label: 'Delivered', count: orders.filter(o => (o.status as string) === 'delivered').length, color: 'text-emerald-700 bg-emerald-100' },
+              { id: 'cancelled', label: 'Cancelled', count: orders.filter(o => o.status === 'cancelled').length, color: 'text-slate-600 bg-slate-200' },
+            ].map(st => {
+              const isSelected = selectedStatus === st.id;
+              return (
+                <button
+                  key={st.id}
+                  onClick={() => setSelectedStatus(st.id)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200/80 text-slate-700'
+                  }`}
+                >
+                  <span>{st.label}</span>
+                  {st.count !== undefined && st.count > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono-numbers font-bold ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : st.color || 'bg-slate-200 text-slate-700'
+                    }`}>
+                      {st.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Active Filters Summary Indicator */}
+        {isAnyFilterActive && (
+          <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="font-semibold text-slate-700">Active Filters:</span>
+              {dateFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold">
+                  Date: {dateFilter === 'today' ? 'Today' : dateFilter === 'tomorrow' ? 'Tomorrow' : dateFilter === 'last7days' ? 'Last 7 Days' : 'This Month'}
+                  <button onClick={() => setDateFilter('all')} className="hover:text-blue-950"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {selectedStatus !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold uppercase text-[10px]">
+                  Status: {selectedStatus}
+                  <button onClick={() => setSelectedStatus('all')} className="hover:text-amber-950"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {selectedRetailer !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-semibold">
+                  Retailer: {retailers.find(r => r.id === selectedRetailer)?.businessName || selectedRetailer}
+                  <button onClick={() => setSelectedRetailer('all')} className="hover:text-indigo-950"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+              {searchQuery && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-200 text-slate-800 font-semibold">
+                  &ldquo;{searchQuery}&rdquo;
+                  <button onClick={() => setSearchQuery('')} className="hover:text-slate-950"><X className="w-3 h-3" /></button>
+                </span>
+              )}
+            </div>
+            <span className="font-mono-numbers font-semibold text-slate-700 shrink-0">
+              Showing {filteredOrders.length} of {orders.length} orders
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Bulk Operations Toolbar */}
       {selectedOrderIds.length > 0 && (
         <div className="bg-blue-50 border border-blue-200 p-3 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-sm animate-in fade-in">
           <div className="flex items-center gap-2 text-xs font-semibold text-blue-900">
@@ -220,10 +719,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
         </div>
       )}
 
-      {/* Orders Table */}
+      {/* 5. Orders Table */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs min-w-[750px]">
+          <table className="w-full text-left text-xs min-w-[800px]">
             <thead className="bg-slate-50 border-b border-slate-200 text-slate-600 uppercase text-[10px] tracking-wider font-semibold">
               <tr>
                 <th className="py-3 px-3 w-8">
@@ -239,8 +738,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                 </th>
                 <th className="py-3 px-3">Order No.</th>
                 <th className="py-3 px-3">Retailer Store</th>
-                <th className="py-3 px-3">Date</th>
-                <th className="py-3 px-3">Items</th>
+                <th className="py-3 px-3">Expected / Order Date</th>
+                <th className="py-3 px-3">Items Summary</th>
                 <th className="py-3 px-3 text-right">Amount</th>
                 <th className="py-3 px-3">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
@@ -249,13 +748,29 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
             <tbody className="divide-y divide-slate-100 text-slate-800">
               {filteredOrders.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
-                    No orders match your search or filter.
+                  <td colSpan={8} className="py-12 text-center text-slate-400">
+                    <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                    <p className="font-semibold text-slate-600">No orders match your filter criteria.</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      Try adjusting the date range, status, or search query.
+                    </p>
+                    {isAnyFilterActive && (
+                      <button
+                        onClick={handleResetFilters}
+                        className="mt-3 px-3 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-bold text-xs inline-flex items-center gap-1 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        <span>Clear All Filters</span>
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
                 filteredOrders.map(order => {
                   const isSelected = selectedOrderIds.includes(order.id);
+                  const expDate = getOrderExpectedDate(order);
+                  const isExpectedToday = expDate === todayStr;
+                  const isExpectedTomorrow = expDate === tomorrowStr;
 
                   return (
                     <tr 
@@ -276,19 +791,38 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                       <td className="py-3 px-3">
                         <button
                           onClick={() => onSelectRetailer(order.retailerId)}
-                          className="font-bold text-slate-900 hover:text-blue-600 hover:underline text-left"
+                          className="font-bold text-slate-900 hover:text-blue-600 hover:underline text-left block truncate max-w-[200px]"
                         >
                           {order.retailerName}
                         </button>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 font-mono-numbers">
-                        <div>{order.orderDate}</div>
-                        {order.deliveryDate && (
-                          <div className="text-[10px] text-emerald-700 font-semibold flex items-center gap-0.5 mt-0.5" title="Expected Date of Delivery">
-                            <Calendar className="w-3 h-3 text-emerald-600 shrink-0" />
-                            <span>Exp: {order.deliveryDate}</span>
-                          </div>
+                        {order.retailerChannelName && (
+                          <span className="text-[10px] text-slate-400 font-medium block">
+                            {order.retailerChannelName}
+                          </span>
                         )}
+                      </td>
+                      <td className="py-3 px-3 font-mono-numbers">
+                        {/* Expected Delivery Date Alert Pill */}
+                        {isExpectedToday ? (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 mb-0.5">
+                            <Clock className="w-3 h-3 text-blue-600 shrink-0" />
+                            <span>Expected Today</span>
+                          </div>
+                        ) : isExpectedTomorrow ? (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 mb-0.5">
+                            <Truck className="w-3 h-3 text-indigo-600 shrink-0" />
+                            <span>Expected Tomorrow</span>
+                          </div>
+                        ) : order.deliveryDate ? (
+                          <div className="text-[11px] font-semibold text-slate-800 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>Exp: {cleanDateString(order.deliveryDate)}</span>
+                          </div>
+                        ) : null}
+
+                        <div className="text-[10px] text-slate-400">
+                          Placed: {cleanDateString(order.orderDate)}
+                        </div>
                       </td>
                       <td className="py-3 px-3 text-slate-700">
                         <div className="space-y-0.5">
@@ -298,7 +832,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                             </div>
                           ))}
                           {order.items.length > 2 && (
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] text-slate-400 font-medium">
                               +{order.items.length - 2} more items...
                             </span>
                           )}
@@ -396,7 +930,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
         </div>
       </div>
 
-      {/* Order Details Drawer */}
+      {/* 6. Order Details Drawer */}
       <Drawer
         isOpen={Boolean(viewingOrder)}
         onClose={() => setViewingOrder(null)}
@@ -413,19 +947,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
               </h4>
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
-                  <span className="text-slate-500 block text-[10px]">Customer / Retailer</span>
-                  <span className="font-semibold text-slate-900">{viewingOrder.retailerName}</span>
-                </div>
-                <div>
                   <span className="text-slate-500 block text-[10px]">Order Date</span>
-                  <span className="font-semibold text-slate-900 font-mono-numbers">{viewingOrder.orderDate}</span>
+                  <span className="font-semibold text-slate-900 font-mono-numbers">{cleanDateString(viewingOrder.orderDate)}</span>
                 </div>
                 {viewingOrder.deliveryDate && (
                   <div>
                     <span className="text-slate-500 block text-[10px]">Expected Delivery</span>
                     <span className="font-bold text-emerald-700 font-mono-numbers flex items-center gap-1">
                       <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                      {viewingOrder.deliveryDate}
+                      {cleanDateString(viewingOrder.deliveryDate)}
                     </span>
                   </div>
                 )}
@@ -555,10 +1085,10 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                 <Button
                   variant="primary"
                   size="sm"
-                  icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  icon={<CheckCircle2 className="w-4 h-4" />}
                   onClick={async () => {
                     await confirmOrder(viewingOrder.id);
-                    setViewingOrder(prev => prev ? { ...prev, status: 'confirmed' } : null);
+                    setViewingOrder(null);
                   }}
                 >
                   Confirm Order
@@ -569,37 +1099,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                 <Button
                   variant="primary"
                   size="sm"
-                  icon={<FileText className="w-3.5 h-3.5" />}
-                  disabled={isGeneratingDrawerInvoice}
+                  icon={<FileText className="w-4 h-4" />}
+                  isLoading={isGeneratingDrawerInvoice}
                   onClick={async () => {
                     setIsGeneratingDrawerInvoice(true);
                     try {
-                      const res = await generateInvoiceForOrder(viewingOrder.id);
-                      setViewingOrder(prev => prev ? { 
-                        ...prev, 
-                        invoiceId: res.invoiceId,
-                        invoiceNumber: res.invoiceNumber 
-                      } : null);
+                      await generateInvoiceForOrder(viewingOrder.id);
+                      setViewingOrder(null);
                     } finally {
                       setIsGeneratingDrawerInvoice(false);
                     }
                   }}
                 >
-                  {isGeneratingDrawerInvoice ? 'Generating...' : 'Generate Invoice'}
-                </Button>
-              )}
-
-              {viewingOrder.status === 'confirmed' && viewingOrder.invoiceId && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={<FileText className="w-3.5 h-3.5" />}
-                  onClick={() => {
-                    setViewingOrder(null);
-                    handleViewInvoice(viewingOrder);
-                  }}
-                >
-                  View Invoice ({viewingOrder.invoiceNumber || 'Ready'})
+                  Generate Invoice
                 </Button>
               )}
             </div>
