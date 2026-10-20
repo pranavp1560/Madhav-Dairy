@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { useTranslation } from '../../i18n/LanguageContext';
 import {
@@ -75,6 +75,49 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
     ['inventory', 'raw_materials', 'stock_movements'].includes(internalView)
   );
 
+  // Track seen pending order IDs in localStorage so the sidebar badge disappears once clicked / viewed
+  const [seenPendingOrderIds, setSeenPendingOrderIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('madhav_seen_pending_orders');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  // Mark all currently existing pending orders as seen
+  const markPendingOrdersAsSeen = useCallback(() => {
+    const pendingIds = orders.filter(o => o.status === 'pending').map(o => o.id);
+    if (pendingIds.length === 0) return;
+
+    setSeenPendingOrderIds(prev => {
+      let hasNew = false;
+      const next = new Set(prev);
+      for (const id of pendingIds) {
+        if (!next.has(id)) {
+          next.add(id);
+          hasNew = true;
+        }
+      }
+      if (hasNew) {
+        try {
+          localStorage.setItem('madhav_seen_pending_orders', JSON.stringify(Array.from(next)));
+        } catch {
+          // ignore storage error
+        }
+        return next;
+      }
+      return prev;
+    });
+  }, [orders]);
+
+  // When user is actively viewing the orders page, automatically mark all pending orders as seen
+  useEffect(() => {
+    if (internalView === 'orders') {
+      markPendingOrdersAsSeen();
+    }
+  }, [internalView, markPendingOrdersAsSeen]);
+
   // Count only active and unread expiry alerts within urgent threshold (disappears when marked read)
   const urgentExpiryCount = expiryAlerts.filter(a => {
     if (a.daysRemaining > 5) return false;
@@ -87,12 +130,20 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
     }
     return true;
   }).length;
-  const pendingOrdersCount = orders.filter(o => o.status === 'pending').length;
+
+  // Pending orders badge count: disappears once user clicks on orders or views orders
+  const pendingOrdersCount = internalView === 'orders'
+    ? 0
+    : orders.filter(o => o.status === 'pending' && !seenPendingOrderIds.has(o.id)).length;
+
   const openSubmissionsCount = paymentSubmissions.filter(s => s.status === 'open').length;
 
   const navigateTo = (viewId: string) => {
     if (viewId === 'ledger') {
       setSelectedRetailerId('');
+    }
+    if (viewId === 'orders') {
+      markPendingOrdersAsSeen();
     }
     setInternalView(viewId);
     onCloseMobile();
@@ -131,7 +182,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
     {
       title: t.internal.nav.sales,
       items: [
-        { id: 'orders', label: t.internal.nav.orders, icon: ShoppingCart, badge: pendingOrdersCount, badgeColor: 'bg-semanticAmber-600' },
+        { id: 'orders', label: t.internal.nav.orders, icon: ShoppingCart, badge: pendingOrdersCount > 0 ? pendingOrdersCount : undefined, badgeColor: 'bg-semanticAmber-600' },
         { id: 'invoices', label: t.internal.nav.invoices, icon: Receipt },
         { id: 'customers', label: t.internal.nav.customers, icon: Users },
       ],
