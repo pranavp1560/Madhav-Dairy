@@ -317,7 +317,7 @@ interface DairyContextType {
     paymentAmount: number;
     paymentMethod: PaymentMethod;
     allocations: InvoiceAllocationInput[];
-    referenceNumber: string;
+    referenceNumber?: string;
     notes?: string;
     paymentDate?: string;
   }) => Promise<RecordCustomerPaymentResult>;
@@ -1257,7 +1257,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     paymentAmount: number;
     paymentMethod: PaymentMethod;
     allocations: InvoiceAllocationInput[];
-    referenceNumber: string;
+    referenceNumber?: string;
     notes?: string;
     paymentDate?: string;
   }): Promise<RecordCustomerPaymentResult> => {

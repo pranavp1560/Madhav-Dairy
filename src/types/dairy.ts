@@ -365,7 +365,7 @@ export interface RecordCustomerPaymentResult {
   payment_number: string;
   payment_amount: number;
   payment_method: PaymentMethod;
-  reference_number: string;
+  reference_number?: string | null;
   payment_date: string;
   customer_id: string;
   customer_name: string;

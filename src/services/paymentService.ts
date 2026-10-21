@@ -216,7 +216,7 @@ export const paymentService = {
     paymentAmount: number;
     paymentMethod: PaymentMethod;
     allocations: InvoiceAllocationInput[];
-    referenceNumber: string;
+    referenceNumber?: string;
     notes?: string;
     paymentDate?: string;
     userId?: string;
@@ -226,7 +226,7 @@ export const paymentService = {
       p_payment_amount: params.paymentAmount,
       p_payment_method: params.paymentMethod,
       p_allocations: params.allocations,
-      p_reference_number: params.referenceNumber,
+      p_reference_number: params.referenceNumber?.trim() || null,
       p_notes: params.notes || null,
       p_payment_date: params.paymentDate || new Date().toISOString().split('T')[0],
       p_user_id: params.userId || null,

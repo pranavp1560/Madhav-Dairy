@@ -196,8 +196,7 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
     hasInvoices &&
     isAmountValid &&
     isAmountWithinOutstanding &&
-    isAllocationBalanced &&
-    referenceNumber.trim().length > 0;
+    isAllocationBalanced;
 
   // Manual Allocation change on single invoice
   const handleAllocationChange = (invoiceId: string, valueStr: string) => {
@@ -296,11 +295,6 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
       return;
     }
 
-    if (!referenceNumber.trim()) {
-      setErrorMessage('Please provide a reference number (e.g. UPI Ref / UTR / Cheque / Voucher).');
-      return;
-    }
-
     // Prepare allocations payload
     const allocPayload = Object.entries(allocations)
       .filter(([_, amt]) => amt > 0)
@@ -321,7 +315,7 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
         paymentAmount: numericPaymentAmount,
         paymentMethod,
         allocations: allocPayload,
-        referenceNumber: referenceNumber.trim(),
+        referenceNumber: referenceNumber.trim() || undefined,
         notes: notes.trim() || undefined,
         paymentDate,
       });
@@ -434,7 +428,7 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Reference / UTR</span>
-                <span className="font-mono text-slate-900 font-bold block mt-0.5">{successResult.reference_number}</span>
+                <span className="font-mono text-slate-900 font-bold block mt-0.5">{successResult.reference_number || 'None'}</span>
               </div>
               <div>
                 <span className="text-[10px] uppercase font-bold text-slate-400 block">Status</span>
@@ -864,7 +858,7 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
                   {/* Reference / UTR Number */}
                   <div className="space-y-1.5">
                     <label className="block text-xs font-bold text-slate-700">
-                      Reference / UTR / Voucher # <span className="text-red-500">*</span>
+                      Reference / UTR / Voucher # <span className="text-slate-400 font-normal">(Optional)</span>
                     </label>
                     <input
                       type="text"
@@ -872,7 +866,6 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
                       onChange={e => setReferenceNumber(e.target.value)}
                       placeholder={getReferencePlaceholder()}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-medium focus:outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all"
-                      required
                     />
                   </div>
 
@@ -1175,12 +1168,7 @@ export const RecordPaymentView: React.FC<RecordPaymentViewProps> = ({
                 {/* Bottom Action Submit Button */}
                 <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-800">
                   <div className="text-xs text-slate-400">
-                    {!referenceNumber.trim() ? (
-                      <span className="text-amber-400 flex items-center gap-1">
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        Please enter a Reference / UTR # to record.
-                      </span>
-                    ) : !canSubmit ? (
+                    {!canSubmit ? (
                       <span>Complete allocation to record payment.</span>
                     ) : (
                       <span className="text-emerald-400 flex items-center gap-1">
