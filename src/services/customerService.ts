@@ -151,5 +151,24 @@ export const customerService = {
       .eq('id', customerId);
 
     if (error) throw error;
+  },
+
+  async deleteCustomer(customerId: string, cascadeTransactions = false): Promise<void> {
+    const { data, error } = await supabase.rpc('admin_delete_customer', {
+      p_customer_id: customerId,
+      p_cascade_transactions: cascadeTransactions,
+    });
+
+    if (error) {
+      // Fallback: direct delete if permitted by RLS
+      const { error: directErr } = await supabase
+        .from('customers')
+        .delete()
+        .eq('id', customerId);
+
+      if (directErr) {
+        throw new Error(error.message || directErr.message || 'Failed to delete customer.');
+      }
+    }
   }
 };

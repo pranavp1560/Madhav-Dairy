@@ -36,14 +36,30 @@ export const authService = {
     if (!uid) return null;
 
     // Fetch user profile from public.profiles
-    const { data: profile, error: profileErr } = await supabase
+    let { data: profile, error: profileErr } = await supabase
       .from('profiles')
       .select('id, email, full_name, mobile, user_type, status, department_id, organization_id')
       .eq('id', uid)
       .maybeSingle();
 
     if (profileErr || !profile) {
-      return null;
+      // Auto-heal: Attempt to self-heal user profile via secure RPC
+      try {
+        await supabase.rpc('ensure_user_profile', { p_user_id: uid });
+        const { data: healedProfile } = await supabase
+          .from('profiles')
+          .select('id, email, full_name, mobile, user_type, status, department_id, organization_id')
+          .eq('id', uid)
+          .maybeSingle();
+        if (healedProfile) {
+          profile = healedProfile;
+        } else {
+          return null;
+        }
+      } catch (healErr) {
+        console.warn('Auto-heal profile failed:', healErr);
+        return null;
+      }
     }
 
     // Determine internal role or customer identity
@@ -180,16 +196,22 @@ export const authService = {
     const cleanEmail = data.email.trim().toLowerCase();
     const cleanMobile = data.mobile.replace(/\D/g, '');
 
-    // 1. Supabase Auth signup
+    // 1. Supabase Auth signup with full registration metadata
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: cleanEmail,
       password: data.password,
       options: {
         data: {
           full_name: data.ownerName.trim(),
+          owner_name: data.ownerName.trim(),
           mobile: cleanMobile,
           user_type: 'customer',
           business_name: data.businessName.trim(),
+          address: data.address.trim(),
+          city: (data.city || 'Pune').trim(),
+          state: (data.state || 'Maharashtra').trim(),
+          pincode: data.pincode ? data.pincode.trim() : null,
+          gstin: data.gstin ? data.gstin.trim() : null,
         }
       }
     });
@@ -207,7 +229,7 @@ export const authService = {
 
     const requiresEmailConfirmation = !authData.session && !authData.user.confirmed_at && !authData.user.email_confirmed_at;
 
-    // 2. Call atomic registration RPC function to provision customer record & linking
+    // 2. Fallback: Call atomic registration RPC function to provision customer record & linking
     try {
       const { error: rpcErr } = await supabase.rpc('register_customer_account', {
         p_business_name: data.businessName.trim(),
@@ -228,7 +250,16 @@ export const authService = {
       console.warn('RPC registration exception:', rpcEx);
     }
 
-    const profile = await this.getUserProfile(authData.user.id);
+    // 3. Fallback: Ensure profile is provisioned in public.profiles
+    let profile = await this.getUserProfile(authData.user.id);
+    if (!profile) {
+      try {
+        await supabase.rpc('ensure_user_profile', { p_user_id: authData.user.id });
+        profile = await this.getUserProfile(authData.user.id);
+      } catch (ensureErr) {
+        console.warn('ensure_user_profile notice:', ensureErr);
+      }
+    }
     return {
       user: authData.user,
       profile,

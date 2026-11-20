@@ -18,7 +18,10 @@ import {
   ArrowRight,
   TrendingUp,
   Download,
-  Printer
+  Printer,
+  Trash2,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { RetailerStatementModal } from './RetailerStatementModal';
 
@@ -40,16 +43,33 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
     payments,
     ledger,
     expiryAlerts,
-    batches
+    batches,
+    deleteCustomer
   } = useDairy();
 
   const [activeTab, setActiveTab] = useState<'overview' | 'orders' | 'invoices' | 'payments' | 'ledger' | 'expiry' | 'profile'>('overview');
   const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [cascadeTransactions, setCascadeTransactions] = useState(false);
 
   if (!retailerId) return null;
 
   const retailer = retailers.find(r => r.id === retailerId);
   if (!retailer) return null;
+
+  const handleConfirmDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await deleteCustomer(retailer.id, cascadeTransactions);
+      setIsDeleteModalOpen(false);
+      onClose();
+    } catch {
+      // Error toast handled in context
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const retailerOrders = orders.filter(o => o.retailerId === retailer.id);
   const retailerInvoices = invoices.filter(i => i.retailerId === retailer.id);
@@ -133,6 +153,18 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
                 <span>+ Record Payment</span>
               </button>
             )}
+
+            <button
+              onClick={() => {
+                setCascadeTransactions(false);
+                setIsDeleteModalOpen(true);
+              }}
+              className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold rounded-lg text-xs transition-colors flex items-center gap-1.5 border border-rose-200 shadow-2xs cursor-pointer"
+              title="Delete this customer account"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+              <span>Delete Customer</span>
+            </button>
           </div>
         </div>
 
@@ -467,6 +499,115 @@ export const Retailer360Modal: React.FC<Retailer360ModalProps> = ({
           isOpen={isStatementModalOpen}
           onClose={() => setIsStatementModalOpen(false)}
         />
+      )}
+
+      {/* Delete Customer Confirmation Modal */}
+      {isDeleteModalOpen && (
+        <Modal
+          isOpen={isDeleteModalOpen}
+          onClose={() => {
+            if (!isDeleting) setIsDeleteModalOpen(false);
+          }}
+          title="Delete Customer Account"
+          subtitle="Permanent customer removal and ledger reconciliation"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                <p className="font-bold text-rose-900 text-sm">Are you sure you want to delete this customer?</p>
+                <p className="text-xs text-rose-700 leading-relaxed">
+                  You are about to permanently delete <strong className="font-bold text-rose-950">{retailer.businessName}</strong> ({retailer.customerCode || 'Retailer'}).
+                  This action will remove the customer directory profile, revoke portal access, and terminate their authentication credentials.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-600">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Business Name:</span>
+                <span className="font-bold text-slate-900">{retailer.businessName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Owner Name:</span>
+                <span className="font-medium text-slate-800">{retailer.ownerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Contact Mobile:</span>
+                <span className="font-mono-numbers text-slate-800">+91 {retailer.mobile}</span>
+              </div>
+              {retailer.email && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Login Email:</span>
+                  <span className="font-medium text-slate-800">{retailer.email}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-slate-500">Sales Channel:</span>
+                <span className="font-medium text-slate-800">{retailer.salesChannelName || 'Wholesale'}</span>
+              </div>
+              <div className="flex justify-between pt-1.5 border-t border-slate-200">
+                <span className="font-bold text-slate-700">Outstanding Balance:</span>
+                <span className={`font-mono-numbers font-bold ${
+                  (retailer.outstandingAmount || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                }`}>
+                  ₹{(retailer.outstandingAmount || 0).toLocaleString('en-IN')}
+                </span>
+              </div>
+            </div>
+
+            {(retailer.outstandingAmount || 0) > 0 && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] leading-relaxed">
+                  <strong>Outstanding Notice:</strong> This customer currently has an unpaid balance of <strong>₹{(retailer.outstandingAmount || 0).toLocaleString('en-IN')}</strong>. Deleting this account will cancel all pending receivables.
+                </p>
+              </div>
+            )}
+
+            <label className="flex items-start gap-2.5 p-3 bg-slate-50 rounded-xl border border-slate-200 cursor-pointer hover:bg-slate-100/70 transition-colors">
+              <input
+                type="checkbox"
+                checked={cascadeTransactions}
+                onChange={e => setCascadeTransactions(e.target.checked)}
+                className="mt-0.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-[11px] text-slate-600 leading-tight">
+                <strong>Cascade Cleanup:</strong> Also delete any draft/test orders, delivery chalans, or submissions associated with this customer.
+              </span>
+            </label>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </Modal>
   );

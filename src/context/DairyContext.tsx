@@ -420,6 +420,7 @@ interface DairyContextType {
     creditLimit?: number;
     salesChannelId?: string;
   }) => Promise<Retailer>;
+  deleteCustomer: (customerId: string, cascadeTransactions?: boolean) => Promise<void>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
   confirmOrder: (orderId: string) => Promise<void>;
@@ -1886,6 +1887,21 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const deleteCustomer = async (customerId: string, cascadeTransactions = false) => {
+    try {
+      await customerService.deleteCustomer(customerId, cascadeTransactions);
+      setRetailers(prev => prev.filter(r => r.id !== customerId));
+      if (selectedRetailerId === customerId) {
+        setSelectedRetailerId(null);
+      }
+      addToast('Customer removed from system successfully', 'success');
+      await refreshData();
+    } catch (err: any) {
+      addToast(`Failed to delete customer: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Order and Invoice Lifecycle Workflows
   const confirmOrder = async (orderId: string) => {
     try {
@@ -2747,6 +2763,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         deleteEmployee,
         saveRolePermissions,
         registerRetailer,
+        deleteCustomer,
         updateOrderStatus,
         confirmOrder,
         generateInvoiceForOrder,
