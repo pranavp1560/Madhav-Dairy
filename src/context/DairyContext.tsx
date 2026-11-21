@@ -3,6 +3,7 @@ import {
   Product,
   Batch,
   Retailer,
+  DirectCustomer,
   Order,
   Invoice,
   Payment,
@@ -42,6 +43,7 @@ import {
   authService,
   productService,
   customerService,
+  directCustomerService,
   orderService,
   invoiceService,
   paymentService,
@@ -110,6 +112,26 @@ interface DairyContextType {
   products: Product[];
   batches: Batch[];
   retailers: Retailer[];
+  directCustomers: DirectCustomer[];
+  refreshDirectCustomers: () => Promise<void>;
+  createDirectCustomer: (data: {
+    name: string;
+    mobile: string;
+    address: string;
+    alternateMobile?: string;
+    email?: string;
+    notes?: string;
+  }) => Promise<DirectCustomer>;
+  updateDirectCustomer: (id: string, data: {
+    name?: string;
+    mobile?: string;
+    address?: string;
+    alternateMobile?: string;
+    email?: string;
+    notes?: string;
+    status?: 'active' | 'inactive';
+  }) => Promise<DirectCustomer>;
+  toggleDirectCustomerStatus: (id: string, currentStatus: 'active' | 'inactive') => Promise<'active' | 'inactive'>;
   orders: Order[];
   invoices: Invoice[];
   payments: Payment[];
@@ -474,7 +496,18 @@ interface DairyContextType {
   bulkConfirmInvoicePayments: (invoiceIds: string[]) => Promise<{ settled_count?: number; skipped_count?: number }>;
   rejectInvoicePayment: (invoiceId: string, reason: string) => Promise<void>;
   createInternalOrder: (params: {
-    customerId: string;
+    customerId?: string;
+    orderType?: 'shop' | 'direct_customer';
+    directCustomerId?: string;
+    directCustomerName?: string;
+    directCustomerMobile?: string;
+    directCustomerAddress?: string;
+    deliveryAddress?: string;
+    deliveryInstructions?: string;
+    deliveryContactPerson?: string;
+    deliveryContactNumber?: string;
+    eventName?: string;
+    eventType?: string;
     items: {
       productId?: string;
       skuId?: string;
@@ -562,6 +595,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [products, setProducts] = useState<Product[]>([]);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [retailers, setRetailers] = useState<Retailer[]>([]);
+  const [directCustomers, setDirectCustomers] = useState<DirectCustomer[]>([]);
   const [currentRetailer, setCurrentRetailer] = useState<Retailer | null>(null);
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -732,7 +766,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           sups,
           vAdvs,
           vBills,
-          vAdjs
+          vAdjs,
+          directCusts
         ] = await Promise.all([
           customerService.fetchCustomers().catch(e => { console.warn('fetchCustomers failed', e); return []; }),
           orderService.fetchOrders().catch(e => { console.warn('fetchOrders failed', e); return []; }),
@@ -762,9 +797,11 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           vendorAdvanceService.fetchAdvances().catch(e => { console.warn('fetchAdvances failed', e); return []; }),
           vendorAdvanceService.fetchBills().catch(e => { console.warn('fetchBills failed', e); return []; }),
           vendorAdvanceService.fetchAdjustments().catch(e => { console.warn('fetchAdjustments failed', e); return []; }),
+          directCustomerService.fetchDirectCustomers().catch(e => { console.warn('fetchDirectCustomers failed', e); return []; }),
         ]);
 
         setRetailers(custs);
+        setDirectCustomers(directCusts);
         setOrders(ords);
         setInvoices(invs);
         setPayments(pays);
@@ -2271,9 +2308,81 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  // Direct Customers Management
+  const refreshDirectCustomers = async () => {
+    try {
+      const data = await directCustomerService.fetchDirectCustomers();
+      setDirectCustomers(data);
+    } catch (err) {
+      console.warn('Failed to refresh direct customers:', err);
+    }
+  };
+
+  const createDirectCustomer = async (data: {
+    name: string;
+    mobile: string;
+    address: string;
+    alternateMobile?: string;
+    email?: string;
+    notes?: string;
+  }): Promise<DirectCustomer> => {
+    try {
+      const newCust = await directCustomerService.createDirectCustomer(data);
+      setDirectCustomers(prev => [newCust, ...prev]);
+      addToast(`Direct customer "${newCust.name}" added successfully!`, 'success');
+      return newCust;
+    } catch (err: any) {
+      addToast(`Failed to add direct customer: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const updateDirectCustomer = async (id: string, data: {
+    name?: string;
+    mobile?: string;
+    address?: string;
+    alternateMobile?: string;
+    email?: string;
+    notes?: string;
+    status?: 'active' | 'inactive';
+  }): Promise<DirectCustomer> => {
+    try {
+      const updated = await directCustomerService.updateDirectCustomer(id, data);
+      setDirectCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updated } : c));
+      addToast('Customer details updated successfully', 'success');
+      return updated;
+    } catch (err: any) {
+      addToast(`Failed to update direct customer: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const toggleDirectCustomerStatus = async (id: string, currentStatus: 'active' | 'inactive'): Promise<'active' | 'inactive'> => {
+    try {
+      const newStatus = await directCustomerService.toggleStatus(id, currentStatus);
+      setDirectCustomers(prev => prev.map(c => c.id === id ? { ...c, status: newStatus } : c));
+      addToast(`Direct customer status updated to ${newStatus}`, 'info');
+      return newStatus;
+    } catch (err: any) {
+      addToast(`Failed to change customer status: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
   // Internal Order Creation by Staff
   const createInternalOrder = async (params: {
-    customerId: string;
+    customerId?: string;
+    orderType?: 'shop' | 'direct_customer';
+    directCustomerId?: string;
+    directCustomerName?: string;
+    directCustomerMobile?: string;
+    directCustomerAddress?: string;
+    deliveryAddress?: string;
+    deliveryInstructions?: string;
+    deliveryContactPerson?: string;
+    deliveryContactNumber?: string;
+    eventName?: string;
+    eventType?: string;
     items: {
       productId?: string;
       skuId?: string;
@@ -2288,6 +2397,17 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const newOrder = await orderService.createOrder({
         customerId: params.customerId,
+        orderType: params.orderType,
+        directCustomerId: params.directCustomerId,
+        directCustomerName: params.directCustomerName,
+        directCustomerMobile: params.directCustomerMobile,
+        directCustomerAddress: params.directCustomerAddress,
+        deliveryAddress: params.deliveryAddress,
+        deliveryInstructions: params.deliveryInstructions,
+        deliveryContactPerson: params.deliveryContactPerson,
+        deliveryContactNumber: params.deliveryContactNumber,
+        eventName: params.eventName,
+        eventType: params.eventType,
         items: params.items.map(i => ({
           productId: i.productId,
           skuId: i.skuId,
@@ -2301,6 +2421,10 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       });
 
       setOrders(prev => [newOrder, ...prev]);
+      // If direct order, refresh direct customers to update order aggregates
+      if (params.directCustomerId) {
+        refreshDirectCustomers();
+      }
       const latestNotifs = await notificationService.fetchNotifications();
       setNotifications(latestNotifs);
       addToast(`Order ${newOrder.orderNumber} created successfully!`, 'success');
@@ -2683,6 +2807,11 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         products,
         batches,
         retailers,
+        directCustomers,
+        refreshDirectCustomers,
+        createDirectCustomer,
+        updateDirectCustomer,
+        toggleDirectCustomerStatus,
         orders,
         invoices,
         payments,

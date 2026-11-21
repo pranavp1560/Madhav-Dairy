@@ -9,7 +9,18 @@ export const orderService = {
       .select(`
         id,
         order_number,
+        order_type,
         customer_id,
+        direct_customer_id,
+        direct_customer_name,
+        direct_customer_mobile,
+        direct_customer_address,
+        delivery_address,
+        delivery_instructions,
+        delivery_contact_person,
+        delivery_contact_number,
+        event_name,
+        event_type,
         order_date,
         requested_delivery_date,
         status,
@@ -83,15 +94,30 @@ export const orderService = {
       });
 
       const inv = Array.isArray(o.invoices) ? o.invoices[0] : o.invoices;
+      const isDirect = o.order_type === 'direct_customer' || (!o.customer_id && Boolean(o.direct_customer_id || o.direct_customer_name));
+      const displayName = isDirect
+        ? (o.direct_customer_name || 'Direct Customer')
+        : (o.customers?.business_name || 'Retailer Customer');
 
       return {
         id: o.id,
         orderNumber: o.order_number.startsWith('#') ? o.order_number : `#${o.order_number}`,
-        retailerId: o.customer_id,
-        retailerName: o.customers?.business_name || 'Retailer Customer',
+        orderType: isDirect ? 'direct_customer' : 'shop',
+        retailerId: o.customer_id || undefined,
+        retailerName: displayName,
         retailerChannelId: o.customers?.sales_channel_id,
         retailerChannelName: o.customers?.sales_channels?.name,
         retailerChannelCode: o.customers?.sales_channels?.code,
+        directCustomerId: o.direct_customer_id || undefined,
+        directCustomerName: o.direct_customer_name || undefined,
+        directCustomerMobile: o.direct_customer_mobile || undefined,
+        directCustomerAddress: o.direct_customer_address || undefined,
+        deliveryAddress: o.delivery_address || undefined,
+        deliveryInstructions: o.delivery_instructions || undefined,
+        deliveryContactPerson: o.delivery_contact_person || undefined,
+        deliveryContactNumber: o.delivery_contact_number || undefined,
+        eventName: o.event_name || undefined,
+        eventType: o.event_type || undefined,
         orderDate: o.order_date,
         deliveryDate: o.requested_delivery_date || undefined,
         status: o.status as OrderStatus,
@@ -160,7 +186,18 @@ export const orderService = {
   },
 
   async createOrder(params: {
-    customerId: string;
+    customerId?: string;
+    orderType?: 'shop' | 'direct_customer';
+    directCustomerId?: string;
+    directCustomerName?: string;
+    directCustomerMobile?: string;
+    directCustomerAddress?: string;
+    deliveryAddress?: string;
+    deliveryInstructions?: string;
+    deliveryContactPerson?: string;
+    deliveryContactNumber?: string;
+    eventName?: string;
+    eventType?: string;
     items: {
       productId?: string;
       skuId?: string;
@@ -172,15 +209,25 @@ export const orderService = {
     notes?: string;
     deliveryDate?: string;
   }): Promise<Order> {
-    // 1. Fetch customer's sales channel and validate minimum prices
-    const { data: customerData } = await supabase
-      .from('customers')
-      .select('id, sales_channel_id, sales_channels(id, name, code)')
-      .eq('id', params.customerId)
-      .maybeSingle();
+    const isDirect = params.orderType === 'direct_customer' || Boolean(params.directCustomerId || params.directCustomerName);
+    const orderType = isDirect ? 'direct_customer' : 'shop';
 
-    const channelId = customerData?.sales_channel_id;
-    const channelName = (customerData as any)?.sales_channels?.name || 'Channel';
+    let channelId: string | undefined;
+    let channelName = 'Channel';
+    let customerData: any = null;
+
+    if (params.customerId) {
+      // 1. Fetch customer's sales channel and validate minimum prices
+      const { data } = await supabase
+        .from('customers')
+        .select('id, sales_channel_id, sales_channels(id, name, code)')
+        .eq('id', params.customerId)
+        .maybeSingle();
+
+      customerData = data;
+      channelId = customerData?.sales_channel_id;
+      channelName = (customerData as any)?.sales_channels?.name || 'Channel';
+    }
 
     const itemSkuIds = params.items.map(i => i.skuId).filter(Boolean) as string[];
     const itemProdIds = params.items.map(i => i.productId).filter(Boolean) as string[];
@@ -266,7 +313,18 @@ export const orderService = {
       .from('orders')
       .insert({
         organization_id: orgId,
-        customer_id: params.customerId,
+        customer_id: params.customerId || null,
+        order_type: orderType,
+        direct_customer_id: params.directCustomerId || null,
+        direct_customer_name: params.directCustomerName || null,
+        direct_customer_mobile: params.directCustomerMobile || null,
+        direct_customer_address: params.directCustomerAddress || null,
+        delivery_address: params.deliveryAddress || null,
+        delivery_instructions: params.deliveryInstructions || null,
+        delivery_contact_person: params.deliveryContactPerson || null,
+        delivery_contact_number: params.deliveryContactNumber || null,
+        event_name: params.eventName || null,
+        event_type: params.eventType || null,
         order_number: orderNum,
         order_date: new Date().toISOString().split('T')[0],
         requested_delivery_date: params.deliveryDate || null,
@@ -342,19 +400,32 @@ export const orderService = {
       notes: 'Order created with snapshotted channel pricing'
     });
 
-    // Update customer last_order_at
-    await supabase.from('customers').update({
-      last_order_at: new Date().toISOString()
-    }).eq('id', params.customerId);
+    // Update customer last_order_at if shop customer
+    if (params.customerId) {
+      await supabase.from('customers').update({
+        last_order_at: new Date().toISOString()
+      }).eq('id', params.customerId);
+    }
 
     return {
       id: newOrder.id,
       orderNumber: `#${orderNum}`,
-      retailerId: params.customerId,
-      retailerName: newOrder.customers?.business_name || 'Retailer',
+      orderType,
+      retailerId: params.customerId || undefined,
+      retailerName: isDirect ? (params.directCustomerName || 'Direct Customer') : (newOrder.customers?.business_name || 'Retailer'),
       retailerChannelId: channelId,
       retailerChannelName: channelName,
       retailerChannelCode: (customerData as any)?.sales_channels?.code,
+      directCustomerId: params.directCustomerId || undefined,
+      directCustomerName: params.directCustomerName || undefined,
+      directCustomerMobile: params.directCustomerMobile || undefined,
+      directCustomerAddress: params.directCustomerAddress || undefined,
+      deliveryAddress: params.deliveryAddress || undefined,
+      deliveryInstructions: params.deliveryInstructions || undefined,
+      deliveryContactPerson: params.deliveryContactPerson || undefined,
+      deliveryContactNumber: params.deliveryContactNumber || undefined,
+      eventName: params.eventName || undefined,
+      eventType: params.eventType || undefined,
       orderDate: newOrder.order_date,
       deliveryDate: params.deliveryDate,
       status: 'pending',

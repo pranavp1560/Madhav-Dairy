@@ -17,4 +17,5 @@ export * from './deliveryService';
 export * from './supplierService';
 export * from './vendorAdvanceService';
 export * from './customerImportService';
+export * from './directCustomerService';
 export * from './orgService';

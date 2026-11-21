@@ -162,6 +162,25 @@ export interface Retailer {
   customerCode?: string;
 }
 
+export interface DirectCustomer {
+  id: string;
+  organizationId?: string;
+  customerCode: string;
+  name: string;
+  mobile: string;
+  alternateMobile?: string;
+  email?: string;
+  address: string;
+  notes?: string;
+  status: 'active' | 'inactive';
+  createdAt: string;
+  createdBy?: string;
+  updatedAt: string;
+  updatedBy?: string;
+  totalOrders?: number;
+  lastOrderDate?: string;
+}
+
 export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'delivered' | 'cancelled';
 
 export interface OrderItem {
@@ -182,11 +201,22 @@ export interface OrderItem {
 export interface Order {
   id: string;
   orderNumber: string; // e.g. "#MD1025"
-  retailerId: string;
+  orderType?: 'shop' | 'direct_customer';
+  retailerId?: string;
   retailerName: string;
   retailerChannelId?: string;
   retailerChannelName?: string;
   retailerChannelCode?: string;
+  directCustomerId?: string;
+  directCustomerName?: string;
+  directCustomerMobile?: string;
+  directCustomerAddress?: string;
+  deliveryAddress?: string;
+  deliveryInstructions?: string;
+  deliveryContactPerson?: string;
+  deliveryContactNumber?: string;
+  eventName?: string;
+  eventType?: string;
   orderDate: string;
   deliveryDate?: string;
   status: OrderStatus;
@@ -224,10 +254,14 @@ export interface Invoice {
   orderNumber?: string;
   deliveryTripId?: string;
   deliveryTripNumber?: string;
-  retailerId: string;
+  retailerId?: string;
   retailerName: string;
-  retailerGstin: string;
-  retailerAddress: string;
+  retailerGstin?: string;
+  retailerAddress?: string;
+  directCustomerId?: string;
+  directCustomerName?: string;
+  directCustomerMobile?: string;
+  directCustomerAddress?: string;
   date: string;
   dueDate: string;
   items: InvoiceItem[];

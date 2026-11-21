@@ -172,7 +172,7 @@ export const ReportsView: React.FC = () => {
     return invoices.filter(inv => {
       // Customer multi-select filter
       if (selectedCustomerIds.length > 0) {
-        if (!selectedCustomerIds.includes(inv.retailerId) && !selectedCustomerIds.includes(inv.retailerName)) {
+        if (!selectedCustomerIds.includes(inv.retailerId || '') && !selectedCustomerIds.includes(inv.retailerName || '')) {
           return false;
         }
       }

@@ -38,6 +38,7 @@ import { CreateOrderView } from './CreateOrderView';
 import { AddExpenseModal } from './AddExpenseModal';
 import { ImportCustomersView } from './ImportCustomersView';
 import { ImportFeedView } from './ImportFeedView';
+import { DirectCustomersView } from './DirectCustomersView';
 
 export const InternalLayout: React.FC = () => {
   const {
@@ -49,6 +50,8 @@ export const InternalLayout: React.FC = () => {
     setSelectedRetailerId,
     selectedInvoiceId,
     setSelectedInvoiceId,
+    selectedOrderId,
+    setSelectedOrderId,
     orderToEdit,
     setOrderToEdit,
   } = useDairy();
@@ -140,6 +143,20 @@ export const InternalLayout: React.FC = () => {
             onSelectRetailer={id => setSelectedRetailerId(id)}
             onOpenRecordPayment={() => handleOpenRecordPayment()}
             onOpenImportCustomers={() => setInternalView('import_customers')}
+          />
+        );
+      case 'direct_customers':
+      case 'direct-customers':
+        return (
+          <DirectCustomersView
+            onCreateOrder={customer => {
+              sessionStorage.setItem('preselected_direct_customer', JSON.stringify(customer));
+              setInternalView('create_order');
+            }}
+            onViewOrder={id => {
+              setSelectedOrderId(id);
+              setInternalView('orders');
+            }}
           />
         );
       case 'import_customers':

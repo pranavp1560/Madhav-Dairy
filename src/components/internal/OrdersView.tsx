@@ -8,7 +8,7 @@ import {
   ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, 
   Truck, Plus, Pencil, CheckCircle2, FileText, CheckSquare, Square, AlertCircle, Clock,
   CalendarDays, Sparkles, X, ChevronDown, Check, RefreshCw, XCircle, ChevronRight,
-  TrendingUp, AlertTriangle
+  TrendingUp, AlertTriangle, User
 } from 'lucide-react';
 import { 
   getTodayDateString, 
@@ -48,6 +48,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRetailer, setSelectedRetailer] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'shop' | 'direct_customer'>('all');
   const [dateFilter, setDateFilter] = useState<OrderDateFilterType>(
     (ordersDateFilter as OrderDateFilterType) || 'all'
   );
@@ -142,12 +143,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     setSelectedRetailer('all');
     setSelectedStatus('all');
     setDateFilter('all');
+    setOrderTypeFilter('all');
     if (setOrdersDateFilter) {
       setOrdersDateFilter('all');
     }
   };
 
-  const isAnyFilterActive = searchQuery !== '' || selectedRetailer !== 'all' || selectedStatus !== 'all' || dateFilter !== 'all';
+  const isAnyFilterActive = searchQuery !== '' || selectedRetailer !== 'all' || selectedStatus !== 'all' || dateFilter !== 'all' || orderTypeFilter !== 'all';
 
   // Filtered orders collection
   const filteredOrders = useMemo(() => {
@@ -157,7 +159,16 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
       const matchesSearch =
         q === '' ||
         o.orderNumber.toLowerCase().includes(q) ||
-        o.retailerName.toLowerCase().includes(q);
+        o.retailerName.toLowerCase().includes(q) ||
+        (o.directCustomerName && o.directCustomerName.toLowerCase().includes(q)) ||
+        (o.directCustomerMobile && o.directCustomerMobile.includes(q)) ||
+        (o.deliveryAddress && o.deliveryAddress.toLowerCase().includes(q)) ||
+        (o.eventName && o.eventName.toLowerCase().includes(q));
+
+      // 1b. Order Type Filter
+      let matchesType = true;
+      if (orderTypeFilter === 'shop') matchesType = o.orderType !== 'direct_customer';
+      if (orderTypeFilter === 'direct_customer') matchesType = o.orderType === 'direct_customer';
 
       // 2. Retailer Filter
       const matchesRetailer = selectedRetailer === 'all' || o.retailerId === selectedRetailer;
@@ -182,9 +193,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                       (placedDate >= monthStartStr && placedDate <= monthEndStr);
       }
 
-      return matchesSearch && matchesRetailer && matchesStatus && matchesDate;
+      return matchesSearch && matchesType && matchesRetailer && matchesStatus && matchesDate;
     });
-  }, [orders, searchQuery, selectedRetailer, selectedStatus, dateFilter, todayStr, tomorrowStr, sevenDaysAgoStr, monthStartStr, monthEndStr]);
+  }, [orders, searchQuery, orderTypeFilter, selectedRetailer, selectedStatus, dateFilter, todayStr, tomorrowStr, sevenDaysAgoStr, monthStartStr, monthEndStr]);
 
   // Bulk selection handling
   const allFilteredSelected = filteredOrders.length > 0 && filteredOrders.every(o => selectedOrderIds.includes(o.id));
@@ -551,6 +562,37 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
           </div>
         </div>
 
+        {/* Order Type Tabs (All, Shop Orders, Direct Customer Orders) */}
+        <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 bg-slate-100/80 p-1 rounded-xl overflow-x-auto">
+            {[
+              { id: 'all', label: 'All Orders', count: orders.length },
+              { id: 'shop', label: 'Shop Orders', count: orders.filter(o => o.orderType !== 'direct_customer').length },
+              { id: 'direct_customer', label: 'Direct Customer Orders', count: orders.filter(o => o.orderType === 'direct_customer').length },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setOrderTypeFilter(tab.id as any)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 whitespace-nowrap ${
+                  orderTypeFilter === tab.id
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  orderTypeFilter === tab.id
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-slate-200 text-slate-600'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Row 2: Date Range Pills & Status Filter Pills */}
         <div className="pt-3 border-t border-slate-100 flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
           {/* Date Range Selection (Today, Tomorrow, Last 7 Days, This Month, All) */}
@@ -646,6 +688,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
           <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-semibold text-slate-700">Active Filters:</span>
+              {orderTypeFilter !== 'all' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-semibold text-[10px]">
+                  Type: {orderTypeFilter === 'direct_customer' ? 'Direct Customer' : 'Shop'}
+                  <button onClick={() => setOrderTypeFilter('all')} className="hover:text-purple-950"><X className="w-3 h-3" /></button>
+                </span>
+              )}
               {dateFilter !== 'all' && (
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-semibold">
                   Date: {dateFilter === 'today' ? 'Today' : dateFilter === 'tomorrow' ? 'Tomorrow' : dateFilter === 'last7days' ? 'Last 7 Days' : 'This Month'}
@@ -786,20 +834,39 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                         />
                       </td>
                       <td className="py-3 px-3 font-mono-numbers font-bold text-slate-900">
-                        {order.orderNumber}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{order.orderNumber}</span>
+                          {order.orderType === 'direct_customer' ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
+                              Direct
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              Shop
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-3">
                         <button
-                          onClick={() => onSelectRetailer(order.retailerId)}
+                          onClick={() => {
+                            if (order.retailerId) onSelectRetailer(order.retailerId);
+                            else setViewingOrder(order);
+                          }}
                           className="font-bold text-slate-900 hover:text-blue-600 hover:underline text-left block truncate max-w-[200px]"
                         >
                           {order.retailerName}
                         </button>
-                        {order.retailerChannelName && (
+                        {order.orderType === 'direct_customer' ? (
+                          <div className="text-[10px] text-purple-600 font-medium truncate max-w-[200px]">
+                            {order.directCustomerMobile ? `${order.directCustomerMobile}` : 'Direct Master Customer'}
+                            {order.eventName && ` • ${order.eventName}`}
+                          </div>
+                        ) : order.retailerChannelName ? (
                           <span className="text-[10px] text-slate-400 font-medium block">
                             {order.retailerChannelName}
                           </span>
-                        )}
+                        ) : null}
                       </td>
                       <td className="py-3 px-3 font-mono-numbers">
                         {/* Expected Delivery Date Alert Pill */}
@@ -935,11 +1002,60 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
         isOpen={Boolean(viewingOrder)}
         onClose={() => setViewingOrder(null)}
         title={viewingOrder ? `Order ${viewingOrder.orderNumber}` : 'Order Details'}
-        subtitle={viewingOrder ? `Retailer: ${viewingOrder.retailerName}` : ''}
+        subtitle={viewingOrder ? `${viewingOrder.orderType === 'direct_customer' ? 'Direct Customer' : 'Shop'}: ${viewingOrder.retailerName}` : ''}
         width="lg"
       >
         {viewingOrder && (
           <div className="space-y-4 text-xs">
+            {/* Direct Customer Profile Section (if direct customer order) */}
+            {viewingOrder.orderType === 'direct_customer' && (
+              <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-purple-900 uppercase text-[10px] tracking-wider flex items-center gap-1.5">
+                    <User className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Direct Customer Master Record</span>
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                    Direct Master
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">Customer Name</span>
+                    <span className="font-bold text-slate-900">{viewingOrder.directCustomerName || viewingOrder.retailerName}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[10px]">Mobile Number</span>
+                    <span className="font-semibold text-slate-800">{viewingOrder.directCustomerMobile || 'N/A'}</span>
+                  </div>
+                  {viewingOrder.directCustomerAddress && (
+                    <div className="col-span-2">
+                      <span className="text-slate-500 block text-[10px]">Permanent Master Address</span>
+                      <span className="text-slate-700">{viewingOrder.directCustomerAddress}</span>
+                    </div>
+                  )}
+                  {viewingOrder.eventName && (
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Event / Function</span>
+                      <span className="font-semibold text-purple-800">{viewingOrder.eventName} ({viewingOrder.eventType || 'Event'})</span>
+                    </div>
+                  )}
+                  {viewingOrder.deliveryContactPerson && (
+                    <div>
+                      <span className="text-slate-500 block text-[10px]">Delivery Contact</span>
+                      <span className="text-slate-800">{viewingOrder.deliveryContactPerson} {viewingOrder.deliveryContactNumber ? `(${viewingOrder.deliveryContactNumber})` : ''}</span>
+                    </div>
+                  )}
+                  {viewingOrder.deliveryInstructions && (
+                    <div className="col-span-2">
+                      <span className="text-slate-500 block text-[10px]">Delivery Instructions</span>
+                      <span className="text-slate-700 italic">"{viewingOrder.deliveryInstructions}"</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Order Information Section */}
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-2">
               <h4 className="font-bold text-slate-900 uppercase text-[10px] tracking-wider">
@@ -1012,7 +1128,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
 
               <div className="pt-2 border-t border-slate-200">
                 <span className="text-slate-500 block text-[10px]">Delivery Address</span>
-                <span className="text-slate-700">{getRetailerAddress(viewingOrder.retailerId)}</span>
+                <span className="text-slate-700">
+                  {viewingOrder.deliveryAddress || getRetailerAddress(viewingOrder.retailerId || '')}
+                </span>
               </div>
             </div>
 

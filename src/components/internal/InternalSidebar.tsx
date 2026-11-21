@@ -185,6 +185,7 @@ export const InternalSidebar: React.FC<InternalSidebarProps> = ({
         { id: 'orders', label: t.internal.nav.orders, icon: ShoppingCart, badge: pendingOrdersCount > 0 ? pendingOrdersCount : undefined, badgeColor: 'bg-semanticAmber-600' },
         { id: 'invoices', label: t.internal.nav.invoices, icon: Receipt },
         { id: 'customers', label: t.internal.nav.customers, icon: Users },
+        { id: 'direct_customers', label: 'Direct Customers', icon: UserCheck },
       ],
       roles: ['admin', 'accountant'],
     },
