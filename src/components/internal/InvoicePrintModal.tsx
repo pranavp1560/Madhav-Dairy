@@ -120,29 +120,39 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 font-mono-numbers">
-                {invoice.items.map((item, idx) => {
-                  const taxable = item.quantity * item.rate;
+                {(() => {
+                  const seen = new Set<string>();
+                  const displayItems = (invoice.items || []).filter(item => {
+                    const key = item.productId || item.productName;
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
 
-                  return (
-                    <tr key={idx} className="hover:bg-slate-50/50">
-                      <td className="p-2 text-slate-500">{idx + 1}</td>
-                      <td className="p-2 font-sans font-medium text-slate-900">
-                        {item.productName}
-                        <span className="text-[10px] text-slate-500 block font-normal">{item.unit}</span>
-                      </td>
-                      <td className="p-2">
-                        <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[11px] font-bold border border-blue-200">
-                          {item.batchNumber}
-                        </span>
-                      </td>
-                      <td className="p-2 text-right font-bold text-slate-900">{item.quantity}</td>
-                      <td className="p-2 text-right">{item.rate.toFixed(2)}</td>
-                      <td className="p-2 text-right">{taxable.toFixed(2)}</td>
-                      <td className="p-2 text-right">{item.taxPercent}%</td>
-                      <td className="p-2 text-right font-bold text-slate-900">{item.amount.toFixed(2)}</td>
-                    </tr>
-                  );
-                })}
+                  return displayItems.map((item, idx) => {
+                    const taxable = item.quantity * item.rate;
+
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/50">
+                        <td className="p-2 text-slate-500">{idx + 1}</td>
+                        <td className="p-2 font-sans font-medium text-slate-900">
+                          {item.productName}
+                          <span className="text-[10px] text-slate-500 block font-normal">{item.unit}</span>
+                        </td>
+                        <td className="p-2">
+                          <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded text-[11px] font-bold border border-blue-200">
+                            {item.batchNumber}
+                          </span>
+                        </td>
+                        <td className="p-2 text-right font-bold text-slate-900">{item.quantity}</td>
+                        <td className="p-2 text-right">{item.rate.toFixed(2)}</td>
+                        <td className="p-2 text-right">{taxable.toFixed(2)}</td>
+                        <td className="p-2 text-right">{item.taxPercent}%</td>
+                        <td className="p-2 text-right font-bold text-slate-900">{item.amount.toFixed(2)}</td>
+                      </tr>
+                    );
+                  });
+                })()}
               </tbody>
             </table>
           </div>

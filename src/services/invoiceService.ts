@@ -111,7 +111,19 @@ export const invoiceService = {
     }
 
     return (invs || []).map((inv: any): Invoice => {
-      const items: InvoiceItem[] = (inv.invoice_items || []).map((it: any) => {
+      // Defensive deduplication by SKU to avoid repeating duplicate items
+      const rawInvItems = inv.invoice_items || [];
+      const seenSkus = new Set<string>();
+      const uniqueInvItems: any[] = [];
+      for (const it of rawInvItems) {
+        const key = it.product_sku_id || it.id;
+        if (!seenSkus.has(key)) {
+          seenSkus.add(key);
+          uniqueInvItems.push(it);
+        }
+      }
+
+      const items: InvoiceItem[] = uniqueInvItems.map((it: any) => {
         const prod = it.product_skus?.products;
         return {
           productId: prod?.id || it.product_sku_id,

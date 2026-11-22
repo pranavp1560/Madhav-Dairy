@@ -348,7 +348,18 @@ export const deliveryService = {
       const fullAddressParts = [cust?.address, cust?.area, cust?.city, cust?.pincode].filter(Boolean);
       const fullShopAddress = fullAddressParts.length > 0 ? fullAddressParts.join(', ') : 'Registered Shop Address';
 
-      const items = (inv?.invoice_items || []).map((it: any) => {
+      const rawItems = inv?.invoice_items || [];
+      const seenSkus = new Set<string>();
+      const uniqueItems: any[] = [];
+      for (const it of rawItems) {
+        const key = it.product_sku_id || it.id;
+        if (!seenSkus.has(key)) {
+          seenSkus.add(key);
+          uniqueItems.push(it);
+        }
+      }
+
+      const items = uniqueItems.map((it: any) => {
         const prod = it.product_skus?.products;
         return {
           productId: prod?.id || it.product_sku_id,

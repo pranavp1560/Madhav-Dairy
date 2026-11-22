@@ -71,7 +71,19 @@ export const orderService = {
     if (oErr) throw oErr;
 
     return (ordersData || []).map((o: any): Order => {
-      const items: OrderItem[] = (o.order_items || []).map((it: any) => {
+      // Defensive deduplication: ensure each SKU appears at most once per order
+      const rawOrderItems = o.order_items || [];
+      const seenSkus = new Set<string>();
+      const uniqueOrderItems: any[] = [];
+      for (const it of rawOrderItems) {
+        const skuKey = it.product_sku_id || it.id;
+        if (!seenSkus.has(skuKey)) {
+          seenSkus.add(skuKey);
+          uniqueOrderItems.push(it);
+        }
+      }
+
+      const items: OrderItem[] = uniqueOrderItems.map((it: any) => {
         const prod = it.product_skus?.products;
         const sku = it.product_skus;
         const variantLabel = sku?.variant_name || sku?.pack_size || '';
@@ -573,15 +585,13 @@ export const orderService = {
 
     if (updErr) throw updErr;
 
-    // 5. Replace order items: delete old, insert new
-    const { error: delErr } = await supabase
+    // 5. Check if order items actually changed before attempting modification
+    const { data: existingItems } = await supabase
       .from('order_items')
-      .delete()
+      .select('id, product_sku_id, quantity, unit_price')
       .eq('order_id', orderId);
 
-    if (delErr) throw delErr;
-
-    const orderItemsRows = params.items.map(i => {
+    const resolvedItems = params.items.map(i => {
       let finalSkuId = i.skuId;
       if (!finalSkuId && i.productId) {
         finalSkuId = skuMap[i.productId]?.id;
@@ -589,25 +599,68 @@ export const orderService = {
       if (!finalSkuId) {
         throw new Error(`Cannot update order: Product ${i.productId || 'selected'} has no active SKU configured.`);
       }
-
       return {
-        order_id: orderId,
-        product_sku_id: finalSkuId,
-        batch_id: i.batchId || null,
-        quantity: i.quantity,
-        unit_price: i.unitPrice,
-        discount_amount: 0,
-        tax_percent: 0,
-        tax_amount: 0,
-        line_total: i.quantity * i.unitPrice,
+        ...i,
+        skuId: finalSkuId,
       };
     });
 
-    const { error: itemsErr } = await supabase
-      .from('order_items')
-      .insert(orderItemsRows);
+    // Check if resolvedItems match existingItems identically (same count, same skus, same quantities, same prices)
+    const itemsAreIdentical = Boolean(
+      existingItems &&
+      existingItems.length === resolvedItems.length &&
+      resolvedItems.every(ri =>
+        existingItems.some(
+          ei =>
+            ei.product_sku_id === ri.skuId &&
+            Number(ei.quantity) === Number(ri.quantity) &&
+            Number(ei.unit_price) === Number(ri.unitPrice)
+        )
+      )
+    );
 
-    if (itemsErr) throw itemsErr;
+    if (!itemsAreIdentical) {
+      // Items have changed. Try delete old items first.
+      const { error: delErr } = await supabase
+        .from('order_items')
+        .delete()
+        .eq('order_id', orderId);
+
+      if (delErr) {
+        console.warn('Could not delete old order items (check RLS):', delErr);
+      }
+
+      // Check what items remain to avoid duplicates
+      const { data: remainingItems } = await supabase
+        .from('order_items')
+        .select('id, product_sku_id')
+        .eq('order_id', orderId);
+
+      const remainingSkuSet = new Set((remainingItems || []).map(r => r.product_sku_id));
+
+      // Filter out any row whose SKU already exists in order_items to prevent duplicating rows
+      const newItemsToInsert = resolvedItems.filter(ri => !remainingSkuSet.has(ri.skuId));
+
+      if (newItemsToInsert.length > 0) {
+        const orderItemsRows = newItemsToInsert.map(i => ({
+          order_id: orderId,
+          product_sku_id: i.skuId,
+          batch_id: i.batchId || null,
+          quantity: i.quantity,
+          unit_price: i.unitPrice,
+          discount_amount: 0,
+          tax_percent: 0,
+          tax_amount: 0,
+          line_total: i.quantity * i.unitPrice,
+        }));
+
+        const { error: itemsErr } = await supabase
+          .from('order_items')
+          .insert(orderItemsRows);
+
+        if (itemsErr) throw itemsErr;
+      }
+    }
 
     // 6. Record status history
     await supabase.from('order_status_history').insert({

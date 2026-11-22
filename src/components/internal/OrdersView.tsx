@@ -1154,23 +1154,32 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {viewingOrder.items.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                        <td className="p-2.5 font-semibold text-slate-900">
-                          {item.productName}
-                          <span className="block text-[10px] text-slate-400 font-normal">{item.unit}</span>
-                        </td>
-                        <td className="p-2.5 text-right font-mono-numbers font-bold text-slate-900">
-                          {item.quantity}
-                        </td>
-                        <td className="p-2.5 text-right font-mono-numbers text-slate-600">
-                          ₹{item.unitPrice}
-                        </td>
-                        <td className="p-2.5 text-right font-mono-numbers font-bold text-slate-900">
-                          ₹{item.totalPrice.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      const seen = new Set<string>();
+                      const displayItems = (viewingOrder.items || []).filter(item => {
+                        const key = item.skuId || item.productId || item.productName;
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                      });
+                      return displayItems.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                          <td className="p-2.5 font-semibold text-slate-900">
+                            {item.productName}
+                            <span className="block text-[10px] text-slate-400 font-normal">{item.unit}</span>
+                          </td>
+                          <td className="p-2.5 text-right font-mono-numbers font-bold text-slate-900">
+                            {item.quantity}
+                          </td>
+                          <td className="p-2.5 text-right font-mono-numbers text-slate-600">
+                            ₹{item.unitPrice}
+                          </td>
+                          <td className="p-2.5 text-right font-mono-numbers font-bold text-slate-900">
+                            ₹{item.totalPrice.toLocaleString()}
+                          </td>
+                        </tr>
+                      ));
+                    })()}
                   </tbody>
                 </table>
               </div>

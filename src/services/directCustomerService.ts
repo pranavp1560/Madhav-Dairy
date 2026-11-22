@@ -272,7 +272,19 @@ export const directCustomerService = {
     if (error) throw error;
 
     return (ordersData || []).map((o: any): Order => {
-      const items: OrderItem[] = (o.order_items || []).map((it: any) => {
+      // Defensive deduplication by SKU to avoid repeating duplicate items
+      const rawOrderItems = o.order_items || [];
+      const seenSkus = new Set<string>();
+      const uniqueOrderItems: any[] = [];
+      for (const it of rawOrderItems) {
+        const key = it.product_sku_id || it.id;
+        if (!seenSkus.has(key)) {
+          seenSkus.add(key);
+          uniqueOrderItems.push(it);
+        }
+      }
+
+      const items: OrderItem[] = uniqueOrderItems.map((it: any) => {
         const prod = it.product_skus?.products;
         const sku = it.product_skus;
         const variantLabel = sku?.variant_name || sku?.pack_size || '';
