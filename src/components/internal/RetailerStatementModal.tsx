@@ -44,7 +44,7 @@ export const RetailerStatementModal: React.FC<RetailerStatementModalProps> = ({
   isOpen,
   onClose,
 }) => {
-  const { ledger, invoices, payments, addToast } = useDairy();
+  const { ledger, invoices, payments, businessSettings, addToast } = useDairy();
 
   const [period, setPeriod] = useState<StatementPeriod>('all');
   const [copiedSummary, setCopiedSummary] = useState(false);
@@ -185,9 +185,9 @@ export const RetailerStatementModal: React.FC<RetailerStatementModalProps> = ({
 
   // 4. Download CSV Statement handler
   const handleDownloadCSV = () => {
-    let csv = `MADHAV DAIRY PRIVATE LIMITED\n`;
-    csv += `Plot No. 42, Shirwal Industrial Dairy Zone, Pune-Satara Highway, Maharashtra - 412801\n`;
-    csv += `GSTIN: 27AAACM4401N1Z2 | FSSAI: 11522036000492 | Phone: +91 20 2544 8800\n`;
+    let csv = `${businessSettings.companyName.toUpperCase()}\n`;
+    csv += `${businessSettings.address}\n`;
+    csv += `GSTIN: ${businessSettings.gstin} | FSSAI: ${businessSettings.fssai} | Phone: ${businessSettings.phone || '+91 20 2544 8800'}\n`;
     csv += `Official Customer Account Statement\n\n`;
 
     csv += `CUSTOMER DETAILS\n`;
@@ -349,7 +349,7 @@ export const RetailerStatementModal: React.FC<RetailerStatementModalProps> = ({
                 <img src="/logo.png" alt="Madhav Dairy" className="h-9 w-auto object-contain" />
                 <div>
                   <h1 className="text-lg sm:text-xl font-black uppercase tracking-tight text-slate-900">
-                    Madhav Dairy Private Limited
+                    {businessSettings.companyName}
                   </h1>
                   <span className="text-[10px] uppercase font-bold text-blue-700 tracking-wider">
                     Fresh Milk, Dairy Products & Wholesale Distribution
@@ -357,12 +357,12 @@ export const RetailerStatementModal: React.FC<RetailerStatementModalProps> = ({
                 </div>
               </div>
               <p className="text-slate-600 text-[11px]">
-                Plot No. 42, Shirwal Industrial Dairy Zone, Pune-Satara Highway, Maharashtra - 412801
+                {businessSettings.address}
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-[11px] text-slate-700 mt-1 font-mono-numbers">
-                <span><strong>GSTIN:</strong> 27AAACM4401N1Z2</span>
-                <span><strong>FSSAI:</strong> 11522036000492</span>
-                <span><strong>Phone:</strong> +91 20 2544 8800</span>
+                <span><strong>GSTIN:</strong> {businessSettings.gstin}</span>
+                <span><strong>FSSAI:</strong> {businessSettings.fssai}</span>
+                <span><strong>Phone:</strong> {businessSettings.phone || '+91 20 2544 8800'}</span>
               </div>
             </div>
 

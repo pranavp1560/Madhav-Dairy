@@ -19,3 +19,4 @@ export * from './vendorAdvanceService';
 export * from './customerImportService';
 export * from './directCustomerService';
 export * from './orgService';
+export * from './settingsService';

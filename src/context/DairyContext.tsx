@@ -60,7 +60,9 @@ import {
   userService,
   channelService,
   clearOrgCache,
-  UserSessionProfile
+  UserSessionProfile,
+  settingsService,
+  BusinessSettings
 } from '../services';
 
 export interface CartItem {
@@ -561,6 +563,10 @@ interface DairyContextType {
   markExpiryAlertRead: (alertId: string) => Promise<void>;
   markAllExpiryAlertsRead: () => Promise<void>;
 
+  // Business Settings
+  businessSettings: BusinessSettings;
+  updateBusinessSettings: (newSettings: Partial<BusinessSettings>) => Promise<void>;
+
   // Toasts
   toasts: Toast[];
   addToast: (message: string, type?: Toast['type']) => void;
@@ -629,6 +635,9 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Customer Cart
   const [cart, setCart] = useState<CartItem[]>([]);
 
+  // Business Settings
+  const [businessSettings, setBusinessSettings] = useState<BusinessSettings>(() => settingsService.getInitialSettings());
+
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -658,13 +667,15 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setIsLoading(true);
       setError(null);
 
-      // 1. Always load products & categories
+      // 1. Always load products & categories & business settings
       const [prods, cats] = await Promise.all([
         productService.fetchProducts(),
         productService.fetchCategoriesDetail(),
       ]);
       setProducts(prods);
       setCategories(cats);
+
+      settingsService.fetchSettings().then(s => setBusinessSettings(s)).catch(() => {});
 
       // Check current session to load role-appropriate domain data
       const session = await authService.getSession();
@@ -2626,6 +2637,18 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   };
 
+  const updateBusinessSettings = async (newSettings: Partial<BusinessSettings>) => {
+    try {
+      const saved = await settingsService.saveSettings(newSettings);
+      setBusinessSettings(saved);
+      addToast('Business settings saved successfully!', 'success');
+    } catch (err: any) {
+      console.error('Failed to save business settings:', err);
+      addToast(err.message || 'Failed to save business settings', 'error');
+      throw err;
+    }
+  };
+
   // Payment Details & Customer Verification Operations
   const loadPaymentMethods = async () => {
     try {
@@ -2933,6 +2956,10 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         markAllNotificationsRead,
         markExpiryAlertRead,
         markAllExpiryAlertsRead,
+
+        // Business Settings
+        businessSettings,
+        updateBusinessSettings,
 
         // Payment Details & Customer Verification Submissions
         paymentMethods,

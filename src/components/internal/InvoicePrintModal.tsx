@@ -9,7 +9,7 @@ interface InvoicePrintModalProps {
 }
 
 export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId, onClose }) => {
-  const { invoices, addToast } = useDairy();
+  const { invoices, businessSettings, addToast } = useDairy();
 
   if (!invoiceId) return null;
 
@@ -40,18 +40,18 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
           <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row justify-between items-start gap-4">
             <div>
               <div className="flex items-center gap-3 mb-2">
-                <img src="/logo.png" alt="Madhav Dairy" className="h-10 w-auto object-contain" />
+                <img src="/logo.png" alt={businessSettings.companyName} className="h-10 w-auto object-contain" />
                 <h1 className="text-xl font-black uppercase tracking-tight text-slate-900">
-                  Madhav Dairy Private Limited
+                  {businessSettings.companyName}
                 </h1>
               </div>
               <p className="text-slate-600 text-[11px]">
-                Plot No. 42, Shirwal Industrial Dairy Zone, Pune-Satara Highway, Maharashtra - 412801
+                {businessSettings.address}
               </p>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-slate-700 mt-1 font-mono-numbers">
-                <span><strong>GSTIN:</strong> 27AAACM4401N1Z2</span>
-                <span><strong>FSSAI Lic No:</strong> 11522036000492</span>
-                <span><strong>Phone:</strong> +91 20 2544 8800</span>
+                <span><strong>GSTIN:</strong> {businessSettings.gstin}</span>
+                <span><strong>FSSAI Lic No:</strong> {businessSettings.fssai}</span>
+                <span><strong>Phone:</strong> {businessSettings.phone || '+91 20 2544 8800'}</span>
               </div>
             </div>
 
@@ -188,7 +188,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
             </div>
             <div className="text-center">
               <div className="w-40 border-b border-slate-900 pb-8 text-xs font-bold text-slate-900">
-                For Madhav Dairy Pvt Ltd
+                For {businessSettings.companyName}
               </div>
               <span className="text-[10px] text-slate-500 mt-1 block">Authorized Signatory</span>
             </div>

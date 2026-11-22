@@ -1,20 +1,48 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { Settings, Shield, Store, FileText, Bell, Check, Save } from 'lucide-react';
+import { Settings, Shield, Store, FileText, Bell, Check, Save, Loader2, Phone, Mail, Building2 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { products, addToast } = useDairy();
+  const { products, businessSettings, updateBusinessSettings } = useDairy();
   const [activeTab, setActiveTab] = useState<'profile' | 'roles' | 'pricing' | 'expiry'>('profile');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [companyName, setCompanyName] = useState('Madhav Dairy Private Limited');
-  const [gstin, setGstin] = useState('27AAACM4401N1Z2');
-  const [fssai, setFssai] = useState('11522036000492');
-  const [address, setAddress] = useState('Plot No. 42, Shirwal Industrial Dairy Zone, Pune-Satara Highway, Maharashtra - 412801');
-  const [bankAccount, setBankAccount] = useState('50200088912345 (HDFC Bank, Kothrud Branch, IFSC: HDFC0001234)');
+  // Form state initialized directly from persistent business settings
+  const [companyName, setCompanyName] = useState(businessSettings.companyName);
+  const [gstin, setGstin] = useState(businessSettings.gstin);
+  const [fssai, setFssai] = useState(businessSettings.fssai);
+  const [address, setAddress] = useState(businessSettings.address);
+  const [bankAccount, setBankAccount] = useState(businessSettings.bankAccount);
+  const [phone, setPhone] = useState(businessSettings.phone || '+91 20 2544 8800');
+  const [email, setEmail] = useState(businessSettings.email || 'contact@madhavdairy.com');
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    addToast('Business settings saved successfully!', 'success');
+  // Synchronize whenever persistent business settings update
+  useEffect(() => {
+    setCompanyName(businessSettings.companyName);
+    setGstin(businessSettings.gstin);
+    setFssai(businessSettings.fssai);
+    setAddress(businessSettings.address);
+    setBankAccount(businessSettings.bankAccount);
+    setPhone(businessSettings.phone || '+91 20 2544 8800');
+    setEmail(businessSettings.email || 'contact@madhavdairy.com');
+  }, [businessSettings]);
+
+  const handleSave = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setIsSaving(true);
+    try {
+      await updateBusinessSettings({
+        companyName: companyName.trim(),
+        gstin: gstin.trim(),
+        fssai: fssai.trim(),
+        address: address.trim(),
+        bankAccount: bankAccount.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -35,11 +63,13 @@ export const SettingsView: React.FC = () => {
         </div>
 
         <button
-          onClick={handleSave}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5"
+          type="button"
+          onClick={() => handleSave()}
+          disabled={isSaving}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
         >
-          <Save className="w-4 h-4" />
-          <span>Save Changes</span>
+          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+          <span>{isSaving ? 'Saving...' : 'Save Changes'}</span>
         </button>
       </div>
 
@@ -69,9 +99,14 @@ export const SettingsView: React.FC = () => {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 max-w-4xl text-xs">
         {activeTab === 'profile' && (
           <form onSubmit={handleSave} className="space-y-4">
-            <h3 className="font-bold text-sm text-slate-900 pb-2 border-b border-slate-200">
-              Corporate Legal Entity & Licensing
-            </h3>
+            <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+              <h3 className="font-bold text-sm text-slate-900">
+                Corporate Legal Entity & Licensing
+              </h3>
+              <span className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full font-bold">
+                ✓ Editable & Persistent
+              </span>
+            </div>
 
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Company Trade Name</label>
@@ -79,6 +114,7 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={companyName}
                 onChange={e => setCompanyName(e.target.value)}
+                placeholder="Enter corporate business name"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
@@ -90,7 +126,8 @@ export const SettingsView: React.FC = () => {
                   type="text"
                   value={gstin}
                   onChange={e => setGstin(e.target.value)}
-                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers font-semibold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
+                  placeholder="27AAACM4401N1Z2"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers font-semibold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none uppercase"
                 />
               </div>
 
@@ -100,6 +137,7 @@ export const SettingsView: React.FC = () => {
                   type="text"
                   value={fssai}
                   onChange={e => setFssai(e.target.value)}
+                  placeholder="11522036000492"
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers font-semibold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
                 />
               </div>
@@ -111,6 +149,7 @@ export const SettingsView: React.FC = () => {
                 value={address}
                 onChange={e => setAddress(e.target.value)}
                 rows={2}
+                placeholder="Full address for bills and tax invoices"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
@@ -121,8 +160,44 @@ export const SettingsView: React.FC = () => {
                 type="text"
                 value={bankAccount}
                 onChange={e => setBankAccount(e.target.value)}
+                placeholder="Account number, Bank name, Branch, IFSC"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Official Contact Phone</label>
+                <input
+                  type="text"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                  placeholder="+91 20 2544 8800"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Official Business Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  placeholder="contact@madhavdairy.com"
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end">
+              <button
+                type="submit"
+                disabled={isSaving}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                <span>{isSaving ? 'Saving Changes...' : 'Save Changes'}</span>
+              </button>
             </div>
           </form>
         )}
