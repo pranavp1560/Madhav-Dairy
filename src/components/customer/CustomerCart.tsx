@@ -202,7 +202,7 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-36 font-sans">
       {/* Header */}
-      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs flex items-center justify-between">
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
             {t.customer.cart.title}
@@ -211,13 +211,23 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
             {cart.length} {cart.length === 1 ? 'product' : 'products'} in your wholesale order
           </p>
         </div>
-        <button
-          onClick={clearCart}
-          className="min-h-[44px] text-sm text-red-600 hover:text-red-700 font-bold px-3.5 py-2 rounded-xl hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors flex items-center gap-1.5"
-        >
-          <Trash2 className="w-4 h-4" />
-          <span>Clear All</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={() => onNavigate('products')}
+            className="min-h-[44px] text-xs sm:text-sm text-blue-700 hover:text-blue-800 font-bold px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span>Add More Products</span>
+          </button>
+          <button
+            onClick={clearCart}
+            className="min-h-[44px] text-xs sm:text-sm text-red-600 hover:text-red-700 font-bold px-3.5 py-2 rounded-xl hover:bg-red-50 border border-transparent hover:border-red-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Clear All</span>
+          </button>
+        </div>
       </div>
 
       {/* Cart Items List */}
@@ -443,11 +453,19 @@ export const CustomerCart: React.FC<CustomerCartProps> = ({ onNavigate }) => {
         </div>
       </div>
 
-      {/* Place Order Primary Action Button */}
-      <div className="pt-2">
+      {/* Place Order & Add More Products Action Buttons */}
+      <div className="pt-2 flex flex-col sm:flex-row gap-3">
+        <button
+          type="button"
+          onClick={() => onNavigate('products')}
+          className="sm:w-2/5 min-h-[56px] px-5 py-3.5 rounded-2xl bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-800 font-bold text-base border-2 border-slate-200 shadow-2xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+        >
+          <Plus className="w-5 h-5 text-blue-600 stroke-[2.5]" />
+          <span>Add More Products</span>
+        </button>
         <button
           onClick={handleOpenConfirmModal}
-          className="w-full min-h-[56px] px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-base sm:text-lg shadow-sm flex items-center justify-center gap-3 transition-all active:scale-[0.99]"
+          className="flex-1 min-h-[56px] px-6 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-extrabold text-base sm:text-lg shadow-sm flex items-center justify-center gap-3 transition-all active:scale-[0.99] cursor-pointer"
         >
           <span>{t.customer.cart.placeOrder}</span>
           <span>•</span>

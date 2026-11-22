@@ -3,6 +3,7 @@ import { useDairy } from '../../context/DairyContext';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import { Drawer } from '../ui/Drawer';
+import { OrderBatchConfirmModal } from './OrderBatchConfirmModal';
 import { Order, OrderStatus } from '../../types/dairy';
 import { 
   ShoppingCart, Search, Filter, ArrowRight, Eye, Calendar, MapPin, 
@@ -29,6 +30,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
   const { 
     orders, 
     retailers, 
+    batches,
     updateOrderStatus, 
     confirmOrder, 
     dispatchOrder, 
@@ -53,6 +55,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
     (ordersDateFilter as OrderDateFilterType) || 'all'
   );
   const [viewingOrder, setViewingOrder] = useState<Order | null>(null);
+  const [batchConfirmingOrder, setBatchConfirmingOrder] = useState<Order | null>(null);
 
   // Bulk selection & operation states
   const [selectedOrderIds, setSelectedOrderIds] = useState<string[]>([]);
@@ -937,9 +940,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                           {/* Forward Action Buttons */}
                           {order.status === 'pending' && (
                             <button
-                              onClick={() => confirmOrder(order.id)}
-                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1"
-                              title="Confirm order"
+                              onClick={() => setBatchConfirmingOrder(order)}
+                              className="px-2.5 py-1 bg-blue-50 hover:bg-blue-600 hover:text-white text-blue-700 border border-blue-200 rounded text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                              title="Confirm order & assign FIFO batches"
                             >
                               <CheckCircle2 className="w-3 h-3" />
                               <span>Confirm</span>
@@ -1204,10 +1207,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
                   variant="primary"
                   size="sm"
                   icon={<CheckCircle2 className="w-4 h-4" />}
-                  onClick={async () => {
-                    await confirmOrder(viewingOrder.id);
-                    setViewingOrder(null);
-                  }}
+                  onClick={() => setBatchConfirmingOrder(viewingOrder)}
                 >
                   Confirm Order
                 </Button>
@@ -1236,6 +1236,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onSelectRetailer }) => {
           </div>
         )}
       </Drawer>
+
+      {/* Batch Allocation Modal on Confirm (FIFO default) */}
+      <OrderBatchConfirmModal
+        isOpen={Boolean(batchConfirmingOrder)}
+        onClose={() => setBatchConfirmingOrder(null)}
+        order={batchConfirmingOrder}
+        batches={batches}
+        onConfirm={async (orderId, itemBatches) => {
+          await confirmOrder(orderId, itemBatches);
+          if (viewingOrder?.id === orderId) {
+            setViewingOrder(null);
+          }
+        }}
+      />
     </div>
   );
 };

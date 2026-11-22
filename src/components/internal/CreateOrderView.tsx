@@ -29,6 +29,12 @@ import {
   Building2
 } from 'lucide-react';
 import { calculateDaysRemaining, formatCalendarDate, getTodayDateString } from '../../utils/dateUtils';
+import { 
+  getSkuWeightInKg, 
+  calculatePouchesFromKg, 
+  calculateKgFromPouches, 
+  formatSkuPackLabel 
+} from '../../utils/weightCalculator';
 
 interface CreateOrderViewProps {
   orderToEdit?: Order | null;
@@ -38,8 +44,9 @@ interface CreateOrderViewProps {
 interface FormItemRow {
   productId: string;
   skuId?: string;
-  batchId?: string; // Specific batch selected or undefined for auto-FEFO
-  quantity: number;
+  batchId?: string;
+  quantity: number; // in pouches / packs
+  targetKg?: number; // total bulk kg
   unitPrice: number;
 }
 
@@ -306,10 +313,18 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
       } else if (products.length > 0) {
         const p = products[0];
         const initialSkuId = getInitialSkuId(p.id);
+        const sku = p.skus?.find(s => s.id === initialSkuId);
         const pricing = getItemPricing(p.id, initialSkuId);
         const rate = pricing ? pricing.standardPrice : p.defaultPrice;
-        const defaultBatch = getDefaultFefoBatch(p.id, initialSkuId);
-        setRows([{ productId: p.id, skuId: initialSkuId, batchId: defaultBatch?.id, quantity: 10, unitPrice: rate }]);
+        const weightInKg = getSkuWeightInKg(sku || p);
+        const initialPouches = 10;
+        setRows([{ 
+          productId: p.id, 
+          skuId: initialSkuId, 
+          quantity: initialPouches, 
+          targetKg: calculateKgFromPouches(initialPouches, weightInKg), 
+          unitPrice: rate 
+        }]);
       }
     } else {
       // Create Mode
@@ -325,14 +340,22 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
       if (products.length > 0) {
         const p = products[0];
         const initialSkuId = getInitialSkuId(p.id);
+        const sku = p.skus?.find(s => s.id === initialSkuId);
         const initialChannel = retailers[0]?.salesChannelId;
         const cp = (initialSkuId
           ? skuChannelPrices.find(s => s.skuId === initialSkuId && s.channelId === initialChannel && s.isActive)
           : null) || channelPrices.find(c => c.productId === p.id && c.channelId === initialChannel && c.isActive);
 
         const rate = cp ? cp.standardPrice : p.defaultPrice;
-        const defaultBatch = getDefaultFefoBatch(p.id, initialSkuId);
-        setRows([{ productId: p.id, skuId: initialSkuId, batchId: defaultBatch?.id, quantity: 10, unitPrice: rate }]);
+        const weightInKg = getSkuWeightInKg(sku || p);
+        const initialPouches = 10;
+        setRows([{ 
+          productId: p.id, 
+          skuId: initialSkuId, 
+          quantity: initialPouches, 
+          targetKg: calculateKgFromPouches(initialPouches, weightInKg), 
+          unitPrice: rate 
+        }]);
       } else {
         setRows([]);
       }
@@ -432,26 +455,59 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
     const sku = prod?.skus?.find(s => s.id === skuId);
     const pricing = getItemPricing(pId, skuId);
     const stdPrice = pricing ? pricing.standardPrice : (sku?.sellingPrice || prod?.defaultPrice || 100);
+    const weightInKg = getSkuWeightInKg(sku || prod);
 
-    // Auto assign FEFO batch for newly selected SKU
-    const defaultBatch = getDefaultFefoBatch(pId, skuId);
+    const currentRow = rows[index];
+    let qty = currentRow.quantity || 10;
+    let targetKg = currentRow.targetKg;
+
+    // If user previously set targetKg (e.g. 10 kg), recompute pouches for new SKU (e.g. 500gm -> 20 pouches)
+    if (targetKg && targetKg > 0) {
+      qty = calculatePouchesFromKg(targetKg, weightInKg);
+    } else {
+      targetKg = calculateKgFromPouches(qty, weightInKg);
+    }
 
     const updated = [...rows];
     updated[index] = {
       ...updated[index],
       productId: pId,
       skuId,
-      batchId: defaultBatch?.id,
+      targetKg,
+      quantity: qty > 0 ? qty : 1,
       unitPrice: stdPrice,
     };
     setRows(updated);
   };
 
-  const handleBatchSelectChange = (index: number, val: string) => {
+  const handleTargetKgChange = (index: number, kgVal: number) => {
+    const row = rows[index];
+    const prod = products.find(p => p.id === row.productId);
+    const sku = prod?.skus?.find(s => s.id === row.skuId);
+    const weightInKg = getSkuWeightInKg(sku || prod);
+    const pouches = calculatePouchesFromKg(kgVal, weightInKg);
+
     const updated = [...rows];
     updated[index] = {
       ...updated[index],
-      batchId: val === 'auto_fefo' ? undefined : val,
+      targetKg: kgVal,
+      quantity: pouches > 0 ? pouches : (kgVal > 0 ? 1 : 0),
+    };
+    setRows(updated);
+  };
+
+  const handleQuantityChange = (index: number, qtyVal: number) => {
+    const row = rows[index];
+    const prod = products.find(p => p.id === row.productId);
+    const sku = prod?.skus?.find(s => s.id === row.skuId);
+    const weightInKg = getSkuWeightInKg(sku || prod);
+    const totalKg = calculateKgFromPouches(qtyVal, weightInKg);
+
+    const updated = [...rows];
+    updated[index] = {
+      ...updated[index],
+      quantity: qtyVal,
+      targetKg: totalKg,
     };
     setRows(updated);
   };
@@ -465,17 +521,20 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
   const addRow = () => {
     const defaultProd = products[0];
     const initialSkuId = defaultProd ? getInitialSkuId(defaultProd.id) : undefined;
+    const sku = defaultProd?.skus?.find(s => s.id === initialSkuId);
     const pricing = defaultProd ? getItemPricing(defaultProd.id, initialSkuId) : null;
     const rate = pricing ? pricing.standardPrice : (defaultProd?.defaultPrice || 100);
-    const defaultBatch = defaultProd ? getDefaultFefoBatch(defaultProd.id, initialSkuId) : undefined;
+    const weightInKg = getSkuWeightInKg(sku || defaultProd);
+    const initialPouches = 10;
+    const initialKg = calculateKgFromPouches(initialPouches, weightInKg);
 
     setRows(prev => [
       ...prev,
       {
         productId: defaultProd?.id || '',
         skuId: initialSkuId,
-        batchId: defaultBatch?.id,
-        quantity: 5,
+        targetKg: initialKg,
+        quantity: initialPouches,
         unitPrice: rate,
       },
     ]);
@@ -1306,18 +1365,18 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
           </div>
         )}
 
-        {/* Section 2: Order Line Items with FIFO Batch Selection (Reused across both Shop & Direct) */}
+        {/* Section 2: Order Line Items with Bulk Weight & SKU Pouch Calculator */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100">
             <div>
               <div className="flex items-center gap-2">
                 <Layers className={`w-4 h-4 ${orderType === 'direct_customer' ? 'text-purple-600' : 'text-blue-600'}`} />
                 <h2 className="text-sm font-black text-slate-900 uppercase tracking-wide">
-                  Order Line Items & FIFO Batch Allocation
+                  Product Selection & Bulk Weight Calculator
                 </h2>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                By default, items auto-allocate to the earliest expiring active batch on a FIFO/FEFO basis. Staff may override to a specific batch.
+                Enter bulk weight in KG and select SKU size (e.g., 10 KG of 500 GM = 20 Pouches). Batches will be assigned on a FIFO basis when the order is confirmed.
               </p>
             </div>
 
@@ -1338,12 +1397,13 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
 
           {/* Items Table */}
           <div className="overflow-x-auto border border-slate-200 rounded-xl">
-            <table className="w-full text-xs min-w-[760px]">
+            <table className="w-full text-xs min-w-[780px]">
               <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 text-[11px]">
                 <tr>
-                  <th className="py-3 px-3 text-left w-1/3">Product Family & Child SKU</th>
-                  <th className="py-3 px-3 text-left w-1/3">Assigned Batch (FIFO/FEFO Default)</th>
-                  <th className="py-3 px-3 text-center w-24">Quantity</th>
+                  <th className="py-3 px-3 text-left w-2/5">Product & SKU Variant</th>
+                  <th className="py-3 px-3 text-center w-28">Weight (KG)</th>
+                  <th className="py-3 px-3 text-center w-24">Pack Size</th>
+                  <th className="py-3 px-3 text-center w-36">Pouches / Packs</th>
                   <th className="py-3 px-3 text-center w-28">Rate (₹)</th>
                   <th className="py-3 px-3 text-right w-28">Line Total</th>
                   <th className="py-3 px-3 text-center w-12">Action</th>
@@ -1358,19 +1418,10 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
                   const stdPrice = pricing ? pricing.standardPrice : (sku?.sellingPrice || prod?.defaultPrice || 0);
                   const isBelowFloor = minPrice > 0 && row.unitPrice < minPrice;
                   const lineTotal = (row.quantity || 0) * (row.unitPrice || 0);
+                  const weightInKg = getSkuWeightInKg(sku || prod);
+                  const packLabel = formatSkuPackLabel(sku || prod);
 
                   const compoundValue = `${row.productId}::${row.skuId || 'default'}`;
-
-                  // Available active batches for this SKU or product
-                  const availableBatches = batches.filter(b => {
-                    if (b.status !== 'active') return false;
-                    if (row.skuId && b.skuId) {
-                      return b.skuId === row.skuId;
-                    }
-                    return b.productId === row.productId;
-                  });
-
-                  const selectedBatch = batches.find(b => b.id === row.batchId);
 
                   return (
                     <tr
@@ -1407,49 +1458,53 @@ export const CreateOrderView: React.FC<CreateOrderViewProps> = ({
                         </select>
                       </td>
 
-                      {/* Batch Assignment (FEFO / Specific) */}
-                      <td className="py-2.5 px-3">
-                        <div className="space-y-1">
-                          <select
-                            value={row.batchId || 'auto_fefo'}
-                            onChange={e => handleBatchSelectChange(idx, e.target.value)}
-                            className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-medium text-slate-800 focus:outline-none focus:border-blue-600"
-                          >
-                            <option value="auto_fefo">
-                              ⚡ Auto FIFO/FEFO Allocation (Earliest Expiry)
-                            </option>
-                            {availableBatches.map(b => (
-                              <option key={b.id} value={b.id}>
-                                Batch #{b.batchNumber} — {b.availableQty} {b.unit} available (Exp: {b.expiryDate})
-                              </option>
-                            ))}
-                          </select>
-
-                          {/* Selected Batch Status Pill */}
-                          {selectedBatch && (
-                            <div className="flex items-center gap-1.5 text-[10px]">
-                              <span className="font-semibold text-slate-600">
-                                Stock: {selectedBatch.availableQty} {selectedBatch.unit} left
-                              </span>
-                              <span>&bull;</span>
-                              <span className="text-amber-700 font-medium">
-                                Expires {calculateDaysRemaining(selectedBatch.expiryDate)}
-                              </span>
-                            </div>
-                          )}
+                      {/* Weight (KG) Input */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div className="relative">
+                          <input
+                            type="number"
+                            min="0.1"
+                            step="0.5"
+                            placeholder="e.g. 10"
+                            value={row.targetKg ?? ''}
+                            onChange={e => handleTargetKgChange(idx, parseFloat(e.target.value) || 0)}
+                            className="w-full pr-7 pl-2 py-1.5 text-center font-bold font-mono-numbers text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600 text-slate-900"
+                          />
+                          <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] font-extrabold text-slate-400 pointer-events-none">
+                            KG
+                          </span>
                         </div>
                       </td>
 
-                      {/* Quantity */}
+                      {/* Pack Size Badge */}
                       <td className="py-2.5 px-3 text-center">
-                        <input
-                          type="number"
-                          min="1"
-                          step="1"
-                          value={row.quantity || ''}
-                          onChange={e => handleRowChange(idx, 'quantity', Math.max(0, parseInt(e.target.value, 10) || 0))}
-                          className="w-20 px-2 py-1.5 text-center font-bold font-mono-numbers text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
-                        />
+                        <span className="inline-block px-2 py-1 bg-slate-100 text-slate-800 font-bold rounded-md text-[11px] border border-slate-200">
+                          {packLabel}
+                        </span>
+                      </td>
+
+                      {/* Quantity in Pouches / Packs */}
+                      <td className="py-2.5 px-3 text-center">
+                        <div>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={row.quantity || ''}
+                              onChange={e => handleQuantityChange(idx, Math.max(0, parseInt(e.target.value, 10) || 0))}
+                              className="w-full pr-12 pl-2 py-1.5 text-center font-black font-mono-numbers text-xs bg-white border border-blue-300 text-blue-900 rounded-lg focus:outline-none focus:border-blue-600"
+                            />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold text-blue-600 pointer-events-none">
+                              pouches
+                            </span>
+                          </div>
+                          {row.targetKg && row.targetKg > 0 && (
+                            <span className="text-[10px] text-slate-500 font-semibold block mt-0.5">
+                              {row.targetKg} KG ÷ {packLabel} = {row.quantity}
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Unit Price Rate */}

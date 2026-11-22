@@ -445,7 +445,7 @@ interface DairyContextType {
   deleteCustomer: (customerId: string, cascadeTransactions?: boolean) => Promise<void>;
 
   updateOrderStatus: (orderId: string, status: OrderStatus) => Promise<void>;
-  confirmOrder: (orderId: string) => Promise<void>;
+  confirmOrder: (orderId: string, itemBatches?: Record<string, string>) => Promise<void>;
   generateInvoiceForOrder: (orderId: string) => Promise<{ invoiceId?: string; invoiceNumber?: string }>;
   bulkGenerateInvoices: (orderIds: string[]) => Promise<{ generated_count?: number; skipped_count?: number; failed_count?: number }>;
   dispatchOrder: (orderId: string) => Promise<{ invoiceId?: string; invoiceNumber?: string }>;
@@ -1940,12 +1940,12 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Order and Invoice Lifecycle Workflows
-  const confirmOrder = async (orderId: string) => {
+  const confirmOrder = async (orderId: string, itemBatches?: Record<string, string>) => {
     try {
-      await orderService.confirmOrder(orderId, currentUser?.id);
+      await orderService.confirmOrder(orderId, currentUser?.id, itemBatches);
       const updatedOrders = await orderService.fetchOrders();
       setOrders(updatedOrders);
-      addToast('Order confirmed successfully!', 'success');
+      addToast('Order confirmed successfully with allocated batches!', 'success');
     } catch (err: any) {
       addToast(`Failed to confirm order: ${err.message}`, 'error');
       throw err;

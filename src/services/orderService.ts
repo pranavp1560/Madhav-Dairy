@@ -78,6 +78,7 @@ export const orderService = {
         const displayName = prod?.name ? (variantLabel ? `${prod.name} (${variantLabel})` : prod.name) : 'Dairy Product';
 
         return {
+          id: it.id,
           productId: prod?.id || it.product_sku_id,
           skuId: sku?.id || it.product_sku_id,
           skuCode: sku?.sku_code,
@@ -642,7 +643,30 @@ export const orderService = {
     };
   },
 
-  async confirmOrder(orderId: string, userId?: string) {
+  async confirmOrder(orderId: string, userId?: string, itemBatches?: Record<string, string>) {
+    // If specific or FIFO batch allocations are provided, update the order_items records
+    if (itemBatches && Object.keys(itemBatches).length > 0) {
+      for (const [key, batchId] of Object.entries(itemBatches)) {
+        if (batchId) {
+          // Attempt update by order_items primary key first
+          const { data: updatedRows } = await supabase
+            .from('order_items')
+            .update({ batch_id: batchId })
+            .eq('id', key)
+            .select('id');
+
+          // Fallback update by order_id + product_sku_id if key was skuId/productId
+          if (!updatedRows || updatedRows.length === 0) {
+            await supabase
+              .from('order_items')
+              .update({ batch_id: batchId })
+              .eq('order_id', orderId)
+              .eq('product_sku_id', key);
+          }
+        }
+      }
+    }
+
     const { data, error } = await supabase.rpc('bulk_confirm_orders', {
       p_order_ids: [orderId],
       p_user_id: userId || null,

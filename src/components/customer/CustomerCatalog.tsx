@@ -12,8 +12,15 @@ import {
   Check,
   ShoppingCart,
   ChevronRight,
-  Layers
+  Layers,
+  Scale
 } from 'lucide-react';
+import { 
+  getSkuWeightInKg, 
+  calculatePouchesFromKg, 
+  calculateKgFromPouches, 
+  formatSkuPackLabel 
+} from '../../utils/weightCalculator';
 
 interface CustomerCatalogProps {
   onNavigate: (tab: string) => void;
@@ -39,6 +46,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [targetWeightKg, setTargetWeightKg] = useState<number | ''>('');
 
   // Sync selected product with URL hash for effortless mobile & browser back navigation
   useEffect(() => {
@@ -59,12 +67,14 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
 
   const handleOpenProduct = (productId: string) => {
     setSelectedProductId(productId);
+    setTargetWeightKg('');
     window.location.hash = `#product-${productId}`;
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleBackToList = () => {
     setSelectedProductId(null);
+    setTargetWeightKg('');
     if (window.location.hash.startsWith('#product-')) {
       window.history.pushState(null, '', window.location.pathname + window.location.search);
     }
@@ -231,15 +241,88 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
         <div className="flex items-center justify-between px-1">
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
-              Select Pack Size
+              Select Pack Size & Quantity
             </h2>
             <p className="text-xs sm:text-sm text-slate-500">
-              Choose your required pack size and quantity
+              Choose your required weight or pack size
             </p>
           </div>
           <span className="text-xs font-bold text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
             {activeSkus.length} {activeSkus.length === 1 ? 'pack size' : 'pack sizes'}
           </span>
+        </div>
+
+        {/* Bulk Weight (KG) Calculator Banner */}
+        <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/90 to-sky-50/90 border border-blue-200 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 text-blue-700 text-xs font-black uppercase tracking-wider">
+                <Scale className="w-3.5 h-3.5" />
+                <span>Bulk Weight (KG) to Pouch Calculator</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 mt-0.5">
+                How much total KG do you want?
+              </h3>
+              <p className="text-xs text-slate-600">
+                Enter your required KG (e.g. 10 kg). The system automatically calculates the pouches for each SKU pack size below.
+              </p>
+            </div>
+
+            {/* Quick KG Selector Chips */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {[5, 10, 20, 50].map(kg => (
+                <button
+                  key={kg}
+                  type="button"
+                  onClick={() => setTargetWeightKg(kg)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all ${
+                    targetWeightKg === kg
+                      ? 'bg-blue-600 text-white shadow-2xs'
+                      : 'bg-white hover:bg-blue-100 text-slate-700 border border-slate-200'
+                  }`}
+                >
+                  {kg} KG
+                </button>
+              ))}
+              {targetWeightKg !== '' && (
+                <button
+                  type="button"
+                  onClick={() => setTargetWeightKg('')}
+                  className="px-2 py-1 text-xs text-slate-400 hover:text-slate-600 font-semibold"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+            <div className="relative max-w-xs w-full">
+              <input
+                type="number"
+                min="0.5"
+                step="0.5"
+                placeholder="Enter required KG (e.g. 10)"
+                value={targetWeightKg}
+                onChange={e => setTargetWeightKg(e.target.value === '' ? '' : Math.max(0, parseFloat(e.target.value) || 0))}
+                className="w-full pr-12 pl-3.5 py-2.5 bg-white border border-blue-300 rounded-xl text-sm font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono-numbers"
+              />
+              <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-black text-slate-500 pointer-events-none">
+                KG
+              </span>
+            </div>
+
+            {targetWeightKg && Number(targetWeightKg) > 0 ? (
+              <span className="text-xs font-bold text-blue-900 bg-white border border-blue-200 px-3.5 py-2 rounded-xl inline-flex items-center gap-1.5 shadow-2xs">
+                <span>Calculating pouches for</span>
+                <strong className="text-blue-700 font-mono-numbers">{targetWeightKg} KG</strong>
+              </span>
+            ) : (
+              <span className="text-xs text-slate-500 italic">
+                Tip: Enter 10 KG, then select 500 GM to get 20 pouches instantly.
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Active SKUs List / Grid */}
@@ -265,6 +348,11 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
               const { price: effectivePrice, mrp, savings, label: rateLabel } = getSkuPriceInfo(selectedProduct, sku);
               const inCartQty = getCartSkuQuantity(selectedProduct.id, sku.id);
               const isSkuAvailable = selectedProduct.isAvailable && sku.isActive !== false;
+              const weightInKg = getSkuWeightInKg(sku);
+              const packLabel = formatSkuPackLabel(sku);
+              const calculatedPouches = targetWeightKg && Number(targetWeightKg) > 0
+                ? calculatePouchesFromKg(Number(targetWeightKg), weightInKg)
+                : 0;
 
               return (
                 <div
@@ -279,7 +367,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                           {sku.variantName || sku.packSize}
                         </h3>
                         <span className="text-xs text-slate-500 font-semibold block mt-0.5">
-                          {sku.quantity ? `${sku.quantity} ${sku.unit}` : sku.unit} pack
+                          {packLabel} pack size ({weightInKg} kg/pouch)
                         </span>
                       </div>
 
@@ -322,6 +410,39 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                         )}
                       </div>
                     </div>
+
+                    {/* Bulk KG Calculation Conversion Box */}
+                    {calculatedPouches > 0 && (
+                      <div className="mt-3 p-3 bg-blue-50/80 border border-blue-200 rounded-xl space-y-1.5">
+                        <div className="flex items-center justify-between text-xs font-bold text-blue-950">
+                          <span className="flex items-center gap-1 text-blue-700">
+                            <Scale className="w-3.5 h-3.5" />
+                            <span>{targetWeightKg} KG Order:</span>
+                          </span>
+                          <span className="font-black text-blue-800 font-mono-numbers text-sm">
+                            {calculatedPouches} {calculatedPouches === 1 ? 'Pouch' : 'Pouches'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-600 flex justify-between items-center">
+                          <span>{packLabel} pack</span>
+                          <span className="font-extrabold text-slate-900 font-mono-numbers">
+                            ₹{(calculatedPouches * effectivePrice).toLocaleString()} total
+                          </span>
+                        </div>
+
+                        {inCartQty !== calculatedPouches && (
+                          <button
+                            type="button"
+                            onClick={() => addToCart(selectedProduct.id, calculatedPouches, sku.id)}
+                            disabled={!isSkuAvailable}
+                            className="w-full mt-1.5 py-2 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Add {calculatedPouches} Pouches to Cart</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Bottom: Direct-to-Cart Action / Stepper */}
@@ -335,7 +456,7 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                         className="w-full h-12 min-h-[48px] px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:pointer-events-none text-white font-bold text-sm sm:text-base shadow-2xs flex items-center justify-center gap-2 transition-all active:scale-[0.99]"
                       >
                         <Plus className="w-5 h-5 stroke-[2.5]" />
-                        <span>Add to Cart</span>
+                        <span>Add 1 Pouch to Cart</span>
                       </button>
                     ) : (
                       /* Already in cart: Live Stepper directly synchronizing cart */
@@ -358,9 +479,12 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                                 {inCartQty}
                               </span>
                               <span className="text-xs text-blue-700 font-semibold">
-                                {inCartQty === 1 ? 'pack' : 'packs'}
+                                {inCartQty === 1 ? 'pouch' : 'pouches'}
                               </span>
                             </div>
+                            <span className="text-[11px] text-slate-500 font-semibold block">
+                              ({calculateKgFromPouches(inCartQty, weightInKg)} KG Total)
+                            </span>
                             <span className="text-xs font-bold text-blue-600 font-mono-numbers block">
                               ₹{(inCartQty * effectivePrice).toLocaleString()}
                             </span>
@@ -393,14 +517,14 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
         {/* Sticky Bottom Cart Floating Bar */}
         {cartCount > 0 && (
           <div className="fixed bottom-20 md:bottom-6 inset-x-0 p-3 max-w-xl mx-auto z-40 pointer-events-none">
-            <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 sm:p-4 rounded-2xl shadow-2xl border border-slate-700 flex items-center justify-between pointer-events-auto">
-              <div className="flex items-center gap-3">
+            <div className="bg-slate-900/95 backdrop-blur-md text-white p-3.5 sm:p-4 rounded-2xl shadow-2xl border border-slate-700 flex flex-col sm:flex-row items-center justify-between gap-3 pointer-events-auto">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-base font-mono-numbers shadow-sm">
                   {cartCount}
                 </div>
                 <div>
                   <span className="text-sm font-bold text-white block">
-                    {cartCount} {cartCount === 1 ? 'Product Selected' : 'Products Selected'}
+                    {cartCount} {cartCount === 1 ? 'Product in Cart' : 'Products in Cart'}
                   </span>
                   <span className="text-base sm:text-lg font-black text-blue-300 font-mono-numbers">
                     Total: ₹{cartTotal.toLocaleString()}
@@ -408,13 +532,24 @@ export const CustomerCatalog: React.FC<CustomerCatalogProps> = ({ onNavigate }) 
                 </div>
               </div>
 
-              <button
-                onClick={() => onNavigate('cart')}
-                className="min-h-[48px] px-5 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-sm sm:text-base flex items-center gap-2 shadow-sm transition-all active:scale-95"
-              >
-                <span>Review Cart</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={handleBackToList}
+                  className="min-h-[44px] px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-slate-600 text-slate-200 border border-slate-600 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-all"
+                >
+                  <Plus className="w-4 h-4 text-blue-400" />
+                  <span>Add More Products</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onNavigate('cart')}
+                  className="min-h-[44px] px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-sm transition-all active:scale-95 shrink-0"
+                >
+                  <span>Review Cart</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}

@@ -184,6 +184,7 @@ export interface DirectCustomer {
 export type OrderStatus = 'pending' | 'confirmed' | 'dispatched' | 'delivered' | 'cancelled';
 
 export interface OrderItem {
+  id?: string;
   productId: string;
   productName: string;
   skuId?: string;
