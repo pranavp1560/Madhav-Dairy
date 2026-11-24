@@ -46,15 +46,21 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
     expenses,
     vendorAdvances,
     deleteExpense,
+    deleteVendorAdvance,
+    clearAllExpensesAndAdvances,
   } = useDairy();
 
   // Modals state
   const [isRecordAdvanceOpen, setIsRecordAdvanceOpen] = useState(false);
   const [selectedAdvanceToAdjust, setSelectedAdvanceToAdjust] = useState<VendorAdvance | null>(null);
 
-  // Delete Expense Confirmation state
-  const [expenseToDelete, setExpenseToDelete] = useState<UnifiedExpenseItem | null>(null);
+  // Delete Item Confirmation state (Expenses & Advances)
+  const [itemToDelete, setItemToDelete] = useState<UnifiedExpenseItem | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Clear All Confirmation state
+  const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
+  const [isClearingAll, setIsClearingAll] = useState(false);
 
   // Filters
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -179,17 +185,34 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
     return (vendorAdvances || []).reduce((acc, adv) => acc + (adv.balanceAmount || 0), 0);
   }, [vendorAdvances]);
 
-  // Handle Delete Confirmation
+  // Handle Delete Confirmation (Expenses & Vendor Advances)
   const handleConfirmDelete = async () => {
-    if (!expenseToDelete) return;
+    if (!itemToDelete) return;
     setIsDeleting(true);
     try {
-      await deleteExpense(expenseToDelete.originalId);
-      setExpenseToDelete(null);
+      if (itemToDelete.isAdvance) {
+        await deleteVendorAdvance(itemToDelete.originalId);
+      } else {
+        await deleteExpense(itemToDelete.originalId);
+      }
+      setItemToDelete(null);
     } catch {
       // Handled in context toast
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Handle Clear All Entries Confirmation
+  const handleConfirmClearAll = async () => {
+    setIsClearingAll(true);
+    try {
+      await clearAllExpensesAndAdvances();
+      setIsClearAllModalOpen(false);
+    } catch {
+      // Handled in context toast
+    } finally {
+      setIsClearingAll(false);
     }
   };
 
@@ -233,8 +256,19 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
           </p>
         </div>
 
-        {/* Buttons: + Advance Payment alongside + Add Expense */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        {/* Header Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {unifiedItems.length > 0 && (
+            <button
+              onClick={() => setIsClearAllModalOpen(true)}
+              className="px-3.5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title="Remove all expense and advance records from system"
+            >
+              <Trash2 className="w-4 h-4 text-rose-600" />
+              <span>Remove All Entries</span>
+            </button>
+          )}
+
           <button
             onClick={() => setIsRecordAdvanceOpen(true)}
             className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
@@ -402,18 +436,18 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
       {/* Unified Expenses Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs min-w-[850px]">
+          <table className="w-full text-left text-xs">
             <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider font-semibold border-b border-slate-200">
               <tr>
-                <th className="py-3 px-3.5">Date</th>
-                <th className="py-3 px-3.5">Category</th>
-                <th className="py-3 px-3.5">Description</th>
-                <th className="py-3 px-3.5 text-right">Amount</th>
-                <th className="py-3 px-3.5">Payment Mode</th>
-                <th className="py-3 px-3.5">Paid To / Vendor</th>
-                <th className="py-3 px-3.5">Voucher / Ref #</th>
-                <th className="py-3 px-3.5">Status / Balance</th>
-                <th className="py-3 px-4 text-right">Action</th>
+                <th className="py-2.5 px-3">Date</th>
+                <th className="py-2.5 px-3">Category</th>
+                <th className="py-2.5 px-3">Description</th>
+                <th className="py-2.5 px-3 text-right">Amount</th>
+                <th className="py-2.5 px-3">Payment Mode</th>
+                <th className="py-2.5 px-3">Paid To / Vendor</th>
+                <th className="py-2.5 px-3">Voucher / Ref #</th>
+                <th className="py-2.5 px-3">Status / Balance</th>
+                <th className="py-2.5 px-3 text-right">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-800">
@@ -462,12 +496,12 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       }`}
                     >
                       {/* Date */}
-                      <td className="py-3 px-3.5 font-mono-numbers text-slate-700 whitespace-nowrap font-medium">
+                      <td className="py-2.5 px-3 font-mono-numbers text-slate-700 whitespace-nowrap font-medium">
                         {item.date}
                       </td>
 
                       {/* Category */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border inline-flex items-center gap-1 ${getCategoryBadgeClass(
                             item.category,
@@ -480,7 +514,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       </td>
 
                       {/* Description */}
-                      <td className="py-3 px-3.5 max-w-[280px]">
+                      <td className="py-2.5 px-3 max-w-[220px]">
                         <span className="font-semibold text-slate-900 block truncate" title={item.description}>
                           {item.description}
                         </span>
@@ -492,29 +526,29 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       </td>
 
                       {/* Amount */}
-                      <td className="py-3 px-3.5 text-right font-mono-numbers font-black text-slate-900 text-sm whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-right font-mono-numbers font-black text-slate-900 text-sm whitespace-nowrap">
                         ₹{item.amount.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </td>
 
                       {/* Payment Method */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200">
                           {item.paymentMethod.replace('_', ' ')}
                         </span>
                       </td>
 
                       {/* Paid To / Vendor */}
-                      <td className="py-3 px-3.5 font-semibold text-slate-800 whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-semibold text-slate-800 whitespace-nowrap">
                         {item.paidTo}
                       </td>
 
                       {/* Voucher / Ref # */}
-                      <td className="py-3 px-3.5 font-mono-numbers text-slate-500 text-[11px] whitespace-nowrap">
+                      <td className="py-2.5 px-3 font-mono-numbers text-slate-500 text-[11px] whitespace-nowrap">
                         {item.referenceNumber}
                       </td>
 
                       {/* Advance Balance / Status */}
-                      <td className="py-3 px-3.5 whitespace-nowrap">
+                      <td className="py-2.5 px-3 whitespace-nowrap">
                         {isAdvance ? (
                           isFullyAdjusted ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 inline-flex items-center gap-1 border border-slate-200">
@@ -538,33 +572,25 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                       </td>
 
                       {/* Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <td className="py-2.5 px-3 text-right whitespace-nowrap">
                         <div className="flex items-center justify-end gap-1.5">
-                          {isAdvance ? (
-                            hasRemainingAdvance ? (
-                              <button
-                                onClick={() => setSelectedAdvanceToAdjust(adv)}
-                                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
-                                title="Adjust this advance against goods or raw materials received"
-                              >
-                                <Scale className="w-3.5 h-3.5" />
-                                <span>Adjust</span>
-                              </button>
-                            ) : (
-                              <span className="text-[11px] text-emerald-700 font-bold inline-flex items-center gap-1">
-                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                <span>Adjusted</span>
-                              </span>
-                            )
-                          ) : (
+                          {isAdvance && hasRemainingAdvance && (
                             <button
-                              onClick={() => setExpenseToDelete(item)}
-                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
-                              title="Delete this expense entry"
+                              onClick={() => setSelectedAdvanceToAdjust(adv)}
+                              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold transition-all shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                              title="Adjust this advance against goods or raw materials received"
                             >
-                              <Trash2 className="w-4 h-4" />
+                              <Scale className="w-3.5 h-3.5" />
+                              <span>Adjust</span>
                             </button>
                           )}
+                          <button
+                            onClick={() => setItemToDelete(item)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors border border-transparent hover:border-rose-200 cursor-pointer"
+                            title={isAdvance ? "Delete this vendor advance" : "Delete this expense entry"}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -576,55 +602,57 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
         </div>
       </div>
 
-      {/* Delete Expense Confirmation Modal */}
-      {expenseToDelete && (
+      {/* Delete Item Confirmation Modal (Expense or Advance) */}
+      {itemToDelete && (
         <Modal
-          isOpen={Boolean(expenseToDelete)}
+          isOpen={Boolean(itemToDelete)}
           onClose={() => {
-            if (!isDeleting) setExpenseToDelete(null);
+            if (!isDeleting) setItemToDelete(null);
           }}
-          title="Delete Expense Entry"
-          subtitle="Permanently remove this operating expense record"
+          title={itemToDelete.isAdvance ? "Delete Vendor Advance" : "Delete Expense Entry"}
+          subtitle={itemToDelete.isAdvance ? "Permanently remove this vendor/farmer advance record" : "Permanently remove this operating expense record"}
           maxWidth="md"
         >
           <div className="space-y-4 text-xs">
             <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-bold text-rose-900 text-sm">Are you sure you want to delete this expense?</p>
+                <p className="font-bold text-rose-900 text-sm">
+                  Are you sure you want to delete this {itemToDelete.isAdvance ? "advance" : "expense"}?
+                </p>
                 <p className="text-xs text-rose-700 leading-relaxed">
-                  This action will permanently delete the expense entry and remove it from your operating expense totals.
+                  This action will permanently remove the {itemToDelete.isAdvance ? "vendor advance" : "operating expense"} record and recalculate your accounting totals.
                 </p>
               </div>
             </div>
 
-            {/* Expense Snapshot */}
+            {/* Item Snapshot */}
             <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-600">
               <div className="flex justify-between">
                 <span className="text-slate-500">Date:</span>
-                <span className="font-semibold text-slate-900">{expenseToDelete.date}</span>
+                <span className="font-semibold text-slate-900">{itemToDelete.date}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Category:</span>
-                <span className="font-semibold text-slate-900">{expenseToDelete.category}</span>
+                <span className="text-slate-500">Category / Type:</span>
+                <span className="font-semibold text-slate-900">{itemToDelete.category}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Description:</span>
-                <span className="font-medium text-slate-900">{expenseToDelete.description}</span>
+                <span className="font-medium text-slate-900">{itemToDelete.description}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Paid To:</span>
-                <span className="font-semibold text-slate-900">{expenseToDelete.paidTo}</span>
+                <span className="text-slate-500">Paid To / Vendor:</span>
+                <span className="font-semibold text-slate-900">{itemToDelete.paidTo}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Amount:</span>
                 <span className="font-mono-numbers font-black text-rose-600 text-sm">
-                  ₹{expenseToDelete.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹{itemToDelete.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Voucher / Ref #:</span>
-                <span className="font-mono-numbers text-slate-700">{expenseToDelete.referenceNumber}</span>
+                <span className="font-mono-numbers text-slate-700">{itemToDelete.referenceNumber}</span>
               </div>
             </div>
 
@@ -632,7 +660,7 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
               <button
                 type="button"
-                onClick={() => setExpenseToDelete(null)}
+                onClick={() => setItemToDelete(null)}
                 disabled={isDeleting}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
               >
@@ -652,7 +680,74 @@ export const ExpensesView: React.FC<ExpensesViewProps> = ({ onOpenAddExpense }) 
                 ) : (
                   <>
                     <Trash2 className="w-4 h-4" />
-                    <span>Delete Expense</span>
+                    <span>Delete {itemToDelete.isAdvance ? "Advance" : "Expense"}</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Clear All Confirmation Modal */}
+      {isClearAllModalOpen && (
+        <Modal
+          isOpen={isClearAllModalOpen}
+          onClose={() => {
+            if (!isClearingAll) setIsClearAllModalOpen(false);
+          }}
+          title="Remove All Expense & Advance Entries"
+          subtitle="Reset operations expense and vendor advance records"
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-rose-900 text-sm">
+                  Are you sure you want to remove ALL {unifiedItems.length} entries?
+                </p>
+                <p className="text-xs text-rose-700 leading-relaxed">
+                  This will permanently delete all recorded operating expenses and vendor advances from the system. This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200 space-y-2 text-slate-600">
+              <div className="flex justify-between">
+                <span>Total Operating Expenses to Delete:</span>
+                <span className="font-bold text-slate-900">{expenses.length} records</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Total Vendor Advances to Delete:</span>
+                <span className="font-bold text-slate-900">{vendorAdvances.length} records</span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsClearAllModalOpen(false)}
+                disabled={isClearingAll}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClearAll}
+                disabled={isClearingAll}
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 active:bg-rose-800 disabled:opacity-50 rounded-lg shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                {isClearingAll ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Removing All...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Confirm Remove All</span>
                   </>
                 )}
               </button>

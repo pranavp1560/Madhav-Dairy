@@ -171,5 +171,17 @@ export const expenseService = {
       .eq('id', id);
 
     if (error) throw error;
+  },
+
+  /**
+   * Deletes all operating expense entries.
+   */
+  async clearAllExpenses(): Promise<void> {
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    if (error) throw error;
   }
 };

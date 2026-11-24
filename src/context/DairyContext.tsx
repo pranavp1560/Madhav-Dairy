@@ -356,6 +356,8 @@ interface DairyContextType {
     date?: string;
   }) => Promise<Expense>;
   deleteExpense: (id: string) => Promise<void>;
+  deleteVendorAdvance: (id: string) => Promise<void>;
+  clearAllExpensesAndAdvances: () => Promise<void>;
 
   // Vendor / Farmer Advance Tracking & Adjustments
   suppliers: Supplier[];
@@ -1368,6 +1370,36 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       addToast('Expense entry deleted successfully', 'success');
     } catch (err: any) {
       addToast(`Error deleting expense: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Delete Vendor Advance
+  const deleteVendorAdvance = async (id: string): Promise<void> => {
+    try {
+      await vendorAdvanceService.deleteAdvance(id);
+      setVendorAdvances(prev => prev.filter(a => a.id !== id));
+      setVendorAdvanceAdjustments(prev => prev.filter(a => a.advanceId !== id));
+      addToast('Vendor advance entry deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(`Error deleting vendor advance: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Clear All Operating Expenses and Vendor Advances
+  const clearAllExpensesAndAdvances = async (): Promise<void> => {
+    try {
+      await Promise.all([
+        expenseService.clearAllExpenses().catch(e => console.warn('clearAllExpenses error', e)),
+        vendorAdvanceService.clearAllAdvances().catch(e => console.warn('clearAllAdvances error', e)),
+      ]);
+      setExpenses([]);
+      setVendorAdvances([]);
+      setVendorAdvanceAdjustments([]);
+      addToast('All expense and advance entries have been removed', 'success');
+    } catch (err: any) {
+      addToast(`Error clearing entries: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -2916,6 +2948,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordCustomerPaymentWithAllocations,
         addExpense,
         deleteExpense,
+        deleteVendorAdvance,
+        clearAllExpensesAndAdvances,
         suppliers,
         vendorAdvances,
         vendorBills,

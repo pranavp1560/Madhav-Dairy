@@ -349,5 +349,47 @@ export const vendorAdvanceService = {
       newAdvanceBalance: Number(data.new_advance_balance),
       newAdjustedAmount: Number(data.new_adjusted_amount),
     };
+  },
+
+  /**
+   * Permanently delete a vendor advance entry and its associated adjustments.
+   */
+  async deleteAdvance(advanceId: string): Promise<void> {
+    const { error: adjErr } = await supabase
+      .from('vendor_advance_adjustments')
+      .delete()
+      .eq('advance_id', advanceId);
+    if (adjErr) console.warn('Could not delete advance adjustments:', adjErr);
+
+    const { error } = await supabase
+      .from('vendor_advances')
+      .delete()
+      .eq('id', advanceId);
+
+    if (error) {
+      console.error('Failed to delete vendor advance:', error);
+      throw new Error(error.message || 'Failed to delete vendor advance');
+    }
+  },
+
+  /**
+   * Permanently delete all vendor advances and their adjustments.
+   */
+  async clearAllAdvances(): Promise<void> {
+    const { error: adjErr } = await supabase
+      .from('vendor_advance_adjustments')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+    if (adjErr) console.warn('Could not clear advance adjustments:', adjErr);
+
+    const { error } = await supabase
+      .from('vendor_advances')
+      .delete()
+      .neq('id', '00000000-0000-0000-0000-000000000000');
+
+    if (error) {
+      console.error('Failed to clear vendor advances:', error);
+      throw new Error(error.message || 'Failed to clear vendor advances');
+    }
   }
 };
