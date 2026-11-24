@@ -151,6 +151,7 @@ export interface Retailer {
   address: string;
   area: string;
   gstin: string;
+  fssai?: string;
   creditLimit: number;
   outstandingAmount: number;
   paymentTerms: string; // e.g. "Net 15 Days"
@@ -253,11 +254,16 @@ export interface Invoice {
   invoiceNumber: string; // e.g. "INV-1025"
   orderId?: string;
   orderNumber?: string;
+  orderType?: 'shop' | 'direct_customer';
   deliveryTripId?: string;
   deliveryTripNumber?: string;
+  vehicleNumber?: string;
   retailerId?: string;
   retailerName: string;
+  retailerOwnerName?: string;
+  retailerPhone?: string;
   retailerGstin?: string;
+  retailerFssai?: string;
   retailerAddress?: string;
   directCustomerId?: string;
   directCustomerName?: string;

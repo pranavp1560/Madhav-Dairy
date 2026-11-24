@@ -23,17 +23,38 @@ export const invoiceService = {
         delivered_by,
         settled_at,
         settled_by,
+        customer_id,
+        direct_customer_id,
+        direct_customer_name,
+        direct_customer_mobile,
+        direct_customer_address,
+        delivery_trip_id,
         delivery_trips(
           trip_number,
-          status
+          status,
+          delivery_units(
+            name,
+            vehicle_number
+          )
         ),
         orders(
-          order_number
+          order_number,
+          order_type,
+          delivery_address,
+          direct_customer_name,
+          direct_customer_mobile,
+          direct_customer_address
         ),
         customers(
+          id,
           business_name,
+          owner_name,
+          mobile,
+          email,
           gstin,
-          address
+          address,
+          city,
+          state
         ),
         invoice_items(
           id,
@@ -64,6 +85,11 @@ export const invoiceService = {
           invoice_date,
           due_date,
           order_id,
+          customer_id,
+          direct_customer_id,
+          direct_customer_name,
+          direct_customer_mobile,
+          direct_customer_address,
           subtotal,
           tax_amount,
           discount_amount,
@@ -73,8 +99,25 @@ export const invoiceService = {
           delivered_by,
           settled_at,
           settled_by,
-          orders(order_number),
-          customers(business_name, gstin, address),
+          orders(
+            order_number,
+            order_type,
+            delivery_address,
+            direct_customer_name,
+            direct_customer_mobile,
+            direct_customer_address
+          ),
+          customers(
+            id,
+            business_name,
+            owner_name,
+            mobile,
+            email,
+            gstin,
+            address,
+            city,
+            state
+          ),
           invoice_items(
             id,
             product_sku_id,
@@ -142,17 +185,56 @@ export const invoiceService = {
       const paid = paidMap[inv.id] || (inv.status === 'settled' || inv.status === 'paid' ? total : 0);
       const outstanding = Math.max(0, total - paid);
 
+      const isDirect = !inv.customer_id && (
+        Boolean(inv.direct_customer_id) ||
+        Boolean(inv.direct_customer_name) ||
+        inv.orders?.order_type === 'direct_customer'
+      );
+
+      const retailerName = isDirect
+        ? (inv.direct_customer_name || inv.orders?.direct_customer_name || 'Direct Customer')
+        : (inv.customers?.business_name || 'Retailer Customer');
+
+      const retailerOwnerName = isDirect
+        ? undefined
+        : (inv.customers?.owner_name || undefined);
+
+      const retailerPhone = isDirect
+        ? (inv.direct_customer_mobile || inv.orders?.direct_customer_mobile || undefined)
+        : (inv.customers?.mobile || undefined);
+
+      const retailerAddress = isDirect
+        ? (inv.direct_customer_address || inv.orders?.delivery_address || inv.orders?.direct_customer_address || 'Address not specified')
+        : (inv.customers?.address || 'Maharashtra');
+
+      // Crucial: Only use actual registered GSTIN. Never substitute dummy values!
+      const rawGstin = isDirect ? '' : (inv.customers?.gstin ? inv.customers.gstin.trim() : '');
+      const retailerGstin = rawGstin || undefined;
+
+      const tripObj = Array.isArray(inv.delivery_trips) ? inv.delivery_trips[0] : inv.delivery_trips;
+      const tripNumber = tripObj?.trip_number || undefined;
+      const unitObj = Array.isArray(tripObj?.delivery_units) ? tripObj?.delivery_units[0] : tripObj?.delivery_units;
+      const vehicleNumber = unitObj?.vehicle_number || undefined;
+
       return {
         id: inv.id,
         invoiceNumber: inv.invoice_number,
         orderId: inv.order_id || undefined,
         orderNumber: inv.orders?.order_number || undefined,
+        orderType: isDirect ? 'direct_customer' : 'shop',
         deliveryTripId: inv.delivery_trip_id || undefined,
-        deliveryTripNumber: (Array.isArray(inv.delivery_trips) ? inv.delivery_trips[0]?.trip_number : inv.delivery_trips?.trip_number) || undefined,
-        retailerId: inv.customer_id,
-        retailerName: inv.customers?.business_name || 'Retailer Customer',
-        retailerGstin: inv.customers?.gstin || '27AABCM9124K1Z0',
-        retailerAddress: inv.customers?.address || 'Maharashtra',
+        deliveryTripNumber: tripNumber,
+        vehicleNumber,
+        retailerId: inv.customer_id || undefined,
+        retailerName,
+        retailerOwnerName,
+        retailerPhone,
+        retailerGstin,
+        retailerAddress,
+        directCustomerId: inv.direct_customer_id || undefined,
+        directCustomerName: inv.direct_customer_name || inv.orders?.direct_customer_name || undefined,
+        directCustomerMobile: inv.direct_customer_mobile || inv.orders?.direct_customer_mobile || undefined,
+        directCustomerAddress: inv.direct_customer_address || inv.orders?.direct_customer_address || undefined,
         date: inv.invoice_date,
         dueDate: inv.due_date,
         items,

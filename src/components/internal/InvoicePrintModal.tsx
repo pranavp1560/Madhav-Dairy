@@ -62,6 +62,11 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
               <p className="font-mono-numbers font-bold text-sm text-slate-900 mt-0.5">
                 {invoice.invoiceNumber}
               </p>
+              {invoice.orderNumber && (
+                <p className="text-[11px] text-slate-500 font-mono-numbers mt-0.5">
+                  Order Ref: <strong className="text-slate-800">{invoice.orderNumber}</strong>
+                </p>
+              )}
               <p className="text-[11px] text-slate-600 mt-1">
                 Date: <strong className="text-slate-900">{invoice.date}</strong>
               </p>
@@ -73,26 +78,76 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
 
           {/* Bill To & Dispatch */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 py-4 border-b border-slate-200 text-xs">
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-1">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block">
                 Billed & Dispatched To:
               </span>
-              <h3 className="font-bold text-slate-900 text-sm">{invoice.retailerName}</h3>
-              <p className="text-slate-600 mt-0.5">{invoice.retailerAddress}</p>
-              <p className="text-slate-800 font-mono-numbers mt-1">
-                <strong>GSTIN:</strong> {invoice.retailerGstin || '27AABCU9603R1ZM'}
-              </p>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-slate-900 text-sm">{invoice.retailerName}</h3>
+                {invoice.orderType === 'direct_customer' && (
+                  <span className="px-1.5 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-bold rounded border border-purple-200">
+                    Direct Customer
+                  </span>
+                )}
+              </div>
+              {invoice.retailerOwnerName && (
+                <p className="text-slate-600 text-[11px]">
+                  <strong>Contact Person:</strong> {invoice.retailerOwnerName}
+                </p>
+              )}
+              {invoice.retailerPhone && (
+                <p className="text-slate-600 font-mono-numbers text-[11px]">
+                  <strong>Phone:</strong> {invoice.retailerPhone.startsWith('+') ? invoice.retailerPhone : `+91 ${invoice.retailerPhone}`}
+                </p>
+              )}
+              <p className="text-slate-600 mt-0.5 leading-relaxed">{invoice.retailerAddress}</p>
+              
+              <div className="pt-2 mt-1 border-t border-slate-200/80 flex flex-wrap gap-x-4 gap-y-1 font-mono-numbers text-[11px]">
+                <p className="text-slate-800">
+                  <strong>Buyer GSTIN:</strong>{' '}
+                  {invoice.retailerGstin ? (
+                    <span className="font-bold text-slate-900">{invoice.retailerGstin}</span>
+                  ) : (
+                    <span className="text-slate-500 font-sans italic">
+                      {invoice.orderType === 'direct_customer' ? 'B2C / Consumer (Unregistered)' : 'Unregistered (URP)'}
+                    </span>
+                  )}
+                </p>
+                <p className="text-slate-800">
+                  <strong>Buyer FSSAI Lic:</strong>{' '}
+                  {invoice.retailerFssai ? (
+                    <span className="font-bold text-slate-900">{invoice.retailerFssai}</span>
+                  ) : (
+                    <span className="text-slate-500 font-sans italic">
+                      {invoice.orderType === 'direct_customer' ? 'N/A' : 'Unregistered'}
+                    </span>
+                  )}
+                </p>
+              </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1 text-[11px]">
+            <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 space-y-1.5 text-[11px]">
+              <span className="text-[10px] uppercase font-bold text-slate-500 block mb-0.5">
+                Dispatch & Transport Details:
+              </span>
               <div className="flex justify-between">
                 <span className="text-slate-500">Mode of Transport:</span>
                 <span className="font-medium text-slate-800">Insulated Refrigerated Van</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Vehicle No:</span>
-                <span className="font-mono-numbers font-medium text-slate-800">MH-12-DT-4421</span>
+                <span className="text-slate-500">Vehicle / Unit:</span>
+                <span className="font-mono-numbers font-medium text-slate-800">
+                  {invoice.vehicleNumber || 'Refrigerated Delivery Fleet'}
+                </span>
               </div>
+              {invoice.deliveryTripNumber && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Trip Sheet No:</span>
+                  <span className="font-mono-numbers font-medium text-slate-800">
+                    {invoice.deliveryTripNumber}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="text-slate-500">Payment Status:</span>
                 <span className="font-bold uppercase text-green-700">{invoice.status}</span>
@@ -162,7 +217,7 @@ export const InvoicePrintModal: React.FC<InvoicePrintModalProps> = ({ invoiceId,
             <div className="space-y-2 text-[11px] text-slate-600">
               <p><strong>Bank Details for NEFT / RTGS:</strong></p>
               <p className="font-mono-numbers">
-                HDFC Bank &bull; A/c: 50200088912345 &bull; IFSC: HDFC0001234 &bull; Kothrud Branch
+                {businessSettings.bankAccount || 'HDFC Bank • A/c: 50200088912345 • IFSC: HDFC0001234 • Kothrud Branch'}
               </p>
               <p className="italic text-[10px] text-slate-500">
                 Goods once sold will only be accepted for return within 48 hours in original refrigerated seal.

@@ -443,6 +443,7 @@ interface DairyContextType {
     password?: string;
     address: string;
     area?: string;
+    gstin?: string;
     creditLimit?: number;
     salesChannelId?: string;
   }) => Promise<Retailer>;
@@ -1926,6 +1927,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     password?: string;
     address: string;
     area?: string;
+    gstin?: string;
     creditLimit?: number;
     salesChannelId?: string;
   }): Promise<Retailer> => {
@@ -1937,6 +1939,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         mobile: data.mobile,
         address: data.address,
         area: data.area,
+        gstin: data.gstin,
         creditLimit: data.creditLimit,
         salesChannelId: data.salesChannelId,
       });

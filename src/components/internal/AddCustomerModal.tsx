@@ -17,6 +17,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
   const [area, setArea] = useState('');
+  const [gstin, setGstin] = useState('');
   const [creditLimit, setCreditLimit] = useState(50000);
   const [salesChannelId, setSalesChannelId] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -42,6 +43,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
         email: email.trim() || undefined,
         address: address.trim() || 'Address not specified',
         area: area.trim() || undefined,
+        gstin: gstin.trim() ? gstin.trim().toUpperCase() : undefined,
         creditLimit,
         salesChannelId: salesChannelId || undefined,
       });
@@ -53,6 +55,7 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
       setEmail('');
       setAddress('');
       setArea('');
+      setGstin('');
       onClose();
     } catch (err) {
       console.error(err);
@@ -145,22 +148,16 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block font-bold text-slate-700 mb-1">
-              Sales Channel / Pricing Tier <span className="text-red-500">*</span>
+              GSTIN Number <span className="text-slate-400 font-normal">(Optional, 15 chars)</span>
             </label>
-            <select
-              value={salesChannelId}
-              onChange={e => setSalesChannelId(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
-            >
-              {salesChannels.filter(c => c.isActive).map(ch => (
-                <option key={ch.id} value={ch.id}>
-                  {ch.name} ({ch.code})
-                </option>
-              ))}
-            </select>
-            <span className="text-[10px] text-slate-500 mt-0.5 block">
-              Determines automated pricing rules applied when this customer places orders.
-            </span>
+            <input
+              type="text"
+              maxLength={15}
+              value={gstin}
+              onChange={e => setGstin(e.target.value.toUpperCase())}
+              placeholder="e.g. 27AAAAA0000A1Z5"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-medium text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+            />
           </div>
 
           <div>
@@ -176,6 +173,26 @@ export const AddCustomerModal: React.FC<AddCustomerModalProps> = ({ isOpen, onCl
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono-numbers text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
             />
           </div>
+        </div>
+
+        <div>
+          <label className="block font-bold text-slate-700 mb-1">
+            Sales Channel / Pricing Tier <span className="text-red-500">*</span>
+          </label>
+          <select
+            value={salesChannelId}
+            onChange={e => setSalesChannelId(e.target.value)}
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-900 focus:bg-white focus:border-blue-600 focus:outline-none"
+          >
+            {salesChannels.filter(c => c.isActive).map(ch => (
+              <option key={ch.id} value={ch.id}>
+                {ch.name} ({ch.code})
+              </option>
+            ))}
+          </select>
+          <span className="text-[10px] text-slate-500 mt-0.5 block">
+            Determines automated pricing rules applied when this customer places orders.
+          </span>
         </div>
 
         <div>

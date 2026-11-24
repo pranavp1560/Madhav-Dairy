@@ -158,7 +158,9 @@ export const RetailersView: React.FC<RetailersViewProps> = ({
                 >
                   <td className="p-3 font-bold text-slate-900 text-sm">
                     {r.businessName}
-                    <span className="block text-[10px] text-slate-400 font-mono-numbers">GSTIN: {r.gstin}</span>
+                    <span className="block text-[10px] text-slate-400 font-mono-numbers">
+                      {r.gstin ? `GSTIN: ${r.gstin}` : 'Unregistered (URP)'}
+                    </span>
                   </td>
                   <td className="p-3">
                     <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 inline-block">
