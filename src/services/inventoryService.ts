@@ -120,6 +120,7 @@ export const inventoryService = {
 
   async createBatch(params: {
     productId: string;
+    skuId?: string;
     producedQty: number;
     productionDate: string;
     expiryDate: string;
@@ -140,29 +141,46 @@ export const inventoryService = {
       throw new Error('No storage location configured for this organization');
     }
 
-    // Get default SKU or first active SKU for product
-    let skuId: string | undefined;
+    // Resolve specific SKU, default SKU, or first active SKU for product
+    let skuId: string | undefined = params.skuId;
     let prodName = 'Dairy Product';
+    let skuRecord: any = null;
 
-    const { data: sku } = await supabase
-      .from('product_skus')
-      .select('id, pack_size, unit, products(name)')
-      .eq('product_id', params.productId)
-      .eq('is_default', true)
-      .maybeSingle();
-
-    if (sku?.id) {
-      skuId = sku.id;
-      prodName = (sku as any)?.products?.name || 'Dairy Product';
-    } else {
-      const { data: anySku } = await supabase
+    if (skuId) {
+      const { data: specificSku } = await supabase
         .from('product_skus')
-        .select('id, pack_size, unit, products(name)')
-        .eq('product_id', params.productId)
-        .limit(1)
+        .select('id, pack_size, unit, variant_name, products(name)')
+        .eq('id', skuId)
         .maybeSingle();
-      skuId = anySku?.id;
-      prodName = (anySku as any)?.products?.name || 'Dairy Product';
+      if (specificSku) {
+        skuRecord = specificSku;
+        prodName = (specificSku as any)?.products?.name || 'Dairy Product';
+      }
+    }
+
+    if (!skuRecord) {
+      const { data: sku } = await supabase
+        .from('product_skus')
+        .select('id, pack_size, unit, variant_name, products(name)')
+        .eq('product_id', params.productId)
+        .eq('is_default', true)
+        .maybeSingle();
+
+      if (sku?.id) {
+        skuId = sku.id;
+        skuRecord = sku;
+        prodName = (sku as any)?.products?.name || 'Dairy Product';
+      } else {
+        const { data: anySku } = await supabase
+          .from('product_skus')
+          .select('id, pack_size, unit, variant_name, products(name)')
+          .eq('product_id', params.productId)
+          .limit(1)
+          .maybeSingle();
+        skuId = anySku?.id;
+        skuRecord = anySku;
+        prodName = (anySku as any)?.products?.name || 'Dairy Product';
+      }
     }
 
     if (!skuId) {
@@ -233,8 +251,9 @@ export const inventoryService = {
       id: newBatch.id,
       batchNumber,
       productId: params.productId,
+      skuId,
       productName: prodName,
-      unit: sku ? `${sku.pack_size} ${sku.unit}` : 'pack',
+      unit: skuRecord ? `${skuRecord.variant_name || skuRecord.pack_size} ${skuRecord.unit || ''}`.trim() : 'pack',
       productionDate: params.productionDate,
       expiryDate: params.expiryDate,
       producedQty: params.producedQty,

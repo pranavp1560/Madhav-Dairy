@@ -17,7 +17,7 @@ export const DEFAULT_ROLE_PERMISSIONS_MATRIX: RolePermissionsMatrix = {
     inventory: { view: true, create: true, edit: true, delete: true },
     raw_materials: { view: true, create: true, edit: true, delete: true },
     orders: { view: true, create: true, edit: true, delete: true },
-    invoices: { view: true, create: true, edit: true, delete: false },
+    invoices: { view: true, create: true, edit: true, delete: true },
     customers: { view: true, create: true, edit: true, delete: true },
     payments: { view: true, create: true, edit: true, delete: false },
     ledger: { view: true, create: false, edit: false, delete: false },
@@ -187,7 +187,7 @@ export const userService = {
       view: true,
       create: ['Production', 'Batches', 'Finished Goods', 'Raw Materials', 'Stock Movements', 'Orders', 'Invoices', 'Customers', 'Payments', 'Expenses', 'Users & Roles', 'Products Catalog'].includes(m),
       edit: ['Production', 'Batches', 'Finished Goods', 'Raw Materials', 'Orders', 'Invoices', 'Customers', 'Payments', 'Expenses', 'Expiry Management', 'Users & Roles', 'Products Catalog', 'Settings'].includes(m),
-      delete: false,
+      delete: ['Invoices', 'Orders', 'Raw Materials', 'Expenses', 'Customers', 'Users & Roles', 'Products Catalog'].includes(m),
     }));
   },
 

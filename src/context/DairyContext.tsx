@@ -309,6 +309,7 @@ interface DairyContextType {
 
   createProductionBatch: (data: {
     productId: string;
+    skuId?: string;
     producedQty: number;
     productionDate: string;
     expiryDate: string;
@@ -419,6 +420,9 @@ interface DairyContextType {
     unit?: string;
     qty: number;
     costPerUnit?: number;
+    totalAmount?: number;
+    paymentMethod?: PaymentMethod;
+    recordAsExpense?: boolean;
     supplier?: string;
     reference?: string;
     notes?: string;
@@ -460,6 +464,7 @@ interface DairyContextType {
   bulkDispatchOrders: (orderIds: string[]) => Promise<{ dispatched_count?: number; skipped_count?: number; failed_count?: number }>;
   markInvoiceDelivered: (invoiceId: string) => Promise<void>;
   bulkDeliverInvoices: (invoiceIds: string[]) => Promise<{ delivered_count?: number; skipped_count?: number }>;
+  deleteInvoice: (invoiceId: string) => Promise<void>;
 
   // Delivery Unit & Driver Management Actions
   deliveryUnits: DeliveryUnit[];
@@ -1223,6 +1228,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Create Production Batch
   const createProductionBatch = async (data: {
     productId: string;
+    skuId?: string;
     producedQty: number;
     productionDate: string;
     expiryDate: string;
@@ -1522,16 +1528,67 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     unit?: string;
     qty: number;
     costPerUnit?: number;
+    totalAmount?: number;
+    paymentMethod?: PaymentMethod;
+    recordAsExpense?: boolean;
     supplier?: string;
     reference?: string;
     notes?: string;
   }) => {
-    const matId = data.materialId || rawMaterials[0]?.id;
-    if (!matId) {
-      addToast('No raw material selected', 'error');
-      return;
+    try {
+      let matId = data.materialId;
+      let matName = '';
+      let matUnit = '';
+
+      if (data.newMaterialName) {
+        const newMat = await rawMaterialService.createRawMaterial({
+          name: data.newMaterialName,
+          category: data.category,
+          unit: data.unit,
+          costPerUnit: data.costPerUnit,
+          supplier: data.supplier,
+        });
+        matId = newMat.id;
+        matName = newMat.name;
+        matUnit = newMat.unit;
+        setRawMaterials(prev => [newMat, ...prev]);
+      } else {
+        const target = rawMaterials.find(m => m.id === matId) || rawMaterials[0];
+        matId = target?.id;
+        matName = target?.name || 'Raw Material';
+        matUnit = target?.unit || 'Units';
+      }
+
+      if (!matId) {
+        addToast('No raw material selected', 'error');
+        return;
+      }
+
+      await addRawMaterialStock(matId, data.qty, data.reference || 'PO-PURCHASE', data.notes);
+
+      // Auto-record as Operating Expense if enabled and amount > 0
+      const amountToRecord = data.totalAmount ?? ((data.costPerUnit || 0) * data.qty);
+      const shouldRecordExpense = data.recordAsExpense !== false && amountToRecord > 0;
+
+      if (shouldRecordExpense) {
+        try {
+          const exp = await expenseService.addExpense({
+            category: 'Raw Material',
+            description: `Raw Material Purchase - ${matName} (${data.qty} ${matUnit})`,
+            amount: amountToRecord,
+            paymentMethod: data.paymentMethod || 'upi',
+            paidTo: data.supplier || 'Raw Material Supplier',
+            referenceNumber: data.reference,
+          });
+          setExpenses(prev => [exp, ...prev]);
+        } catch (expErr: any) {
+          console.warn('Auto expense recording failed for raw material purchase:', expErr);
+        }
+      }
+    } catch (err: any) {
+      addToast(`Error adding raw material purchase: ${err.message}`, 'error');
+      throw err;
     }
-    await addRawMaterialStock(matId, data.qty, data.reference || 'PO-PURCHASE', data.notes);
   };
 
   const recordRawMaterialUsage = async (data: {
@@ -2083,6 +2140,23 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return res;
     } catch (err: any) {
       addToast(`Failed to bulk deliver invoices: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  const deleteInvoice = async (invoiceId: string) => {
+    try {
+      await invoiceService.deleteInvoice(invoiceId);
+      setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
+      try {
+        const ords = await orderService.fetchOrders();
+        setOrders(ords);
+      } catch (ordErr) {
+        console.warn('Failed to refresh orders after invoice delete:', ordErr);
+      }
+      addToast('Invoice deleted successfully!', 'success');
+    } catch (err: any) {
+      addToast(`Failed to delete invoice: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -2978,6 +3052,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         bulkDispatchOrders,
         markInvoiceDelivered,
         bulkDeliverInvoices,
+        deleteInvoice,
 
         // Delivery Units & Trips
         deliveryUnits,

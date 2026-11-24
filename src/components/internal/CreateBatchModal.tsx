@@ -14,6 +14,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
   const { products, createProductionBatch, addToast } = useDairy();
 
   const [productId, setProductId] = useState<string>(products[0]?.id || '');
+  const [skuId, setSkuId] = useState<string>('');
   const [producedQty, setProducedQty] = useState<number>(200);
   const [productionDate, setProductionDate] = useState<string>(getTodayDateString());
   const [expiryDate, setExpiryDate] = useState<string>('');
@@ -22,6 +23,18 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
   const [validationError, setValidationError] = useState<string>('');
 
   const selectedProduct = products.find(p => p.id === productId) || products[0];
+
+  // Auto-sync SKU selection when product changes or on initial load
+  useEffect(() => {
+    if (selectedProduct?.skus && selectedProduct.skus.length > 0) {
+      const defaultSku = selectedProduct.skus.find(s => s.isDefault) || selectedProduct.skus[0];
+      setSkuId(defaultSku?.id || '');
+    } else {
+      setSkuId('');
+    }
+  }, [productId, selectedProduct]);
+
+  const selectedSku = selectedProduct?.skus?.find(s => s.id === skuId) || selectedProduct?.skus?.[0];
 
   // Calendar-date calculation for default expiry
   useEffect(() => {
@@ -69,6 +82,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
 
     createProductionBatch({
       productId,
+      skuId: skuId || undefined,
       producedQty,
       productionDate,
       expiryDate,
@@ -87,32 +101,66 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
       maxWidth="xl"
     >
       <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-        {/* Product selection */}
-        <div>
-          <label className="block font-bold text-slate-700 mb-1">
-            Dairy Product <span className="text-red-500">*</span>
-          </label>
-          {products.length === 0 ? (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
-              No products registered in catalog yet. Please add a product first from the Products screen.
-            </div>
-          ) : (
-            <select
-              value={productId}
-              onChange={e => {
-                setProductId(e.target.value);
-                setIsManualOverride(false);
-              }}
-              className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
-              required
-            >
-              {products.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.unit}) — Shelf Life: {p.shelfLifeDays} days
-                </option>
-              ))}
-            </select>
-          )}
+        {/* Product & SKU Selection (2 Separate Cascading Dropdowns) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* Step 1: Product Name */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              1. Dairy Product Name <span className="text-red-500">*</span>
+            </label>
+            {products.length === 0 ? (
+              <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-xs">
+                No products registered yet.
+              </div>
+            ) : (
+              <select
+                value={productId}
+                onChange={e => {
+                  setProductId(e.target.value);
+                  setIsManualOverride(false);
+                }}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
+                required
+              >
+                {products.map(p => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.category && p.category !== 'All' ? `(${p.category})` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <p className="text-[10px] text-slate-400 mt-1">
+              Shelf Life: {selectedProduct?.shelfLifeDays || 10} days
+            </p>
+          </div>
+
+          {/* Step 2: SKU / Variant */}
+          <div>
+            <label className="block font-bold text-slate-700 mb-1">
+              2. Product SKU / Variant <span className="text-red-500">*</span>
+            </label>
+            {selectedProduct?.skus && selectedProduct.skus.length > 0 ? (
+              <select
+                value={skuId}
+                onChange={e => setSkuId(e.target.value)}
+                className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 font-medium focus:border-blue-600 focus:ring-2 focus:ring-blue-100 focus:bg-white focus:outline-none"
+                required
+              >
+                {selectedProduct.skus.map(s => (
+                  <option key={s.id} value={s.id}>
+                    {s.variantName ? `${s.variantName} (${s.packSize})` : s.packSize} — ₹{s.mrp} MRP {s.skuCode ? `[${s.skuCode}]` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <div className="px-3 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-xs text-slate-600 font-medium">
+                Standard Packaging ({selectedProduct?.unit || 'Units'})
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400 mt-1">
+              Selected Pack: {selectedSku ? (selectedSku.variantName ? `${selectedSku.variantName} (${selectedSku.packSize})` : selectedSku.packSize) : (selectedProduct?.unit || 'Standard')}
+            </p>
+          </div>
         </div>
 
         {/* Quantity & Production Date */}
@@ -130,7 +178,7 @@ export const CreateBatchModal: React.FC<CreateBatchModalProps> = ({ isOpen, onCl
               required
             />
             <p className="text-[10px] text-slate-400 mt-1">
-              Unit packaging: {selectedProduct?.unit}
+              Unit packaging: {selectedSku ? (selectedSku.variantName ? `${selectedSku.variantName} (${selectedSku.packSize})` : selectedSku.packSize) : selectedProduct?.unit}
             </p>
           </div>
 

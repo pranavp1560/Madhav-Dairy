@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDairy } from '../../context/DairyContext';
 import { StatusBadge } from '../common/StatusBadge';
 import { Modal } from '../common/Modal';
 import { AssignTripModal } from './AssignTripModal';
 import { Invoice, InvoiceStatus, PaymentMethod } from '../../types/dairy';
+import { userService, RolePermissionsMatrix } from '../../services/userService';
 import { 
   FileText, Plus, Search, Printer, CreditCard, CheckCircle2, 
   Truck, CheckSquare, Square, ArrowRight, Clock, AlertCircle, DollarSign,
-  FileSpreadsheet, Navigation
+  FileSpreadsheet, Navigation, Trash2
 } from 'lucide-react';
 
 interface InvoicesViewProps {
@@ -26,12 +27,51 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
     allocateInvoicePayment, 
     confirmInvoicePayment, 
     bulkConfirmInvoicePayments,
+    deleteInvoice,
+    internalRole,
     setInternalView,
     addToast
   } = useDairy();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // RBAC Permission for deleting invoices
+  const [roleMatrix, setRoleMatrix] = useState<RolePermissionsMatrix | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    userService.fetchRolePermissionsMatrix().then(matrix => {
+      if (isMounted) setRoleMatrix(matrix);
+    }).catch(err => {
+      console.warn('Could not fetch role permissions matrix in InvoicesView:', err);
+    });
+    return () => { isMounted = false; };
+  }, []);
+
+  const canDeleteInvoice = useMemo(() => {
+    if (roleMatrix && roleMatrix[internalRole]?.invoices) {
+      return Boolean(roleMatrix[internalRole].invoices.delete);
+    }
+    return internalRole === 'admin';
+  }, [roleMatrix, internalRole]);
+
+  // Delete invoice modal state
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+
+  const handleDeleteInvoice = async () => {
+    if (!invoiceToDelete) return;
+    setIsDeleting(true);
+    try {
+      await deleteInvoice(invoiceToDelete.id);
+      setInvoiceToDelete(null);
+    } catch {
+      // error toast handled in deleteInvoice
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   // Bulk selection state
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState<string[]>([]);
@@ -485,15 +525,28 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
                         </div>
                       </td>
 
-                      {/* Print Preview Button */}
+                      {/* Print Preview & Delete Actions */}
                       <td className="p-3 text-center font-sans">
-                        <button
-                          onClick={() => onOpenPrintInvoice(inv.id)}
-                          className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 border border-slate-300 transition-colors"
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>Print</span>
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => onOpenPrintInvoice(inv.id)}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 text-slate-700 rounded-lg text-xs font-semibold inline-flex items-center gap-1 border border-slate-300 transition-colors"
+                            title="Print Tax Invoice"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Print</span>
+                          </button>
+
+                          {canDeleteInvoice && (
+                            <button
+                              onClick={() => setInvoiceToDelete(inv)}
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg border border-transparent hover:border-red-200 transition-colors"
+                              title="Delete Invoice (Role Protected)"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -677,6 +730,77 @@ export const InvoicesView: React.FC<InvoicesViewProps> = ({
           setIsAssignTripModalOpen(false);
         }}
       />
+
+      {/* Delete Invoice Confirmation Modal (RBAC Managed) */}
+      {invoiceToDelete && (
+        <Modal
+          isOpen={Boolean(invoiceToDelete)}
+          onClose={() => !isDeleting && setInvoiceToDelete(null)}
+          title="Delete Tax Invoice"
+          subtitle={`Are you sure you want to permanently delete Invoice ${invoiceToDelete.invoiceNumber}?`}
+          maxWidth="md"
+        >
+          <div className="space-y-4 text-xs">
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-red-900">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-xs text-red-800">Permanent Record Deletion</p>
+                <p className="text-[11px] text-red-700 mt-0.5">
+                  This action permanently removes Invoice #{invoiceToDelete.invoiceNumber} for{' '}
+                  <span className="font-semibold">{invoiceToDelete.retailerName}</span> (₹
+                  {invoiceToDelete.totalAmount.toLocaleString('en-IN')}). Associated line items,
+                  payment allocations, and ledger records will be removed.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Invoice Number:</span>
+                <span className="font-bold font-mono text-slate-900">{invoiceToDelete.invoiceNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Customer:</span>
+                <span className="font-semibold text-slate-800">{invoiceToDelete.retailerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Invoice Amount:</span>
+                <span className="font-bold font-mono text-slate-900">₹{invoiceToDelete.totalAmount.toLocaleString('en-IN')}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Current Status:</span>
+                <span className="capitalize font-semibold text-slate-700">{invoiceToDelete.status}</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-200">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setInvoiceToDelete(null)}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={handleDeleteInvoice}
+                className="px-3.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {isDeleting ? (
+                  <span>Deleting...</span>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirm Delete Invoice</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

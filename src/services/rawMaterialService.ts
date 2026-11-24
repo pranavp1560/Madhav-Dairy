@@ -58,6 +58,43 @@ export const rawMaterialService = {
     });
   },
 
+  async createRawMaterial(data: {
+    name: string;
+    category?: string;
+    unit?: string;
+    costPerUnit?: number;
+    supplier?: string;
+  }): Promise<RawMaterial> {
+    const orgId = await getEffectiveOrgId();
+    const { data: created, error } = await supabase
+      .from('raw_materials')
+      .insert({
+        organization_id: orgId,
+        name: data.name,
+        category: data.category || 'Raw Milk & Cream',
+        unit: data.unit || 'Litres',
+        cost_per_unit: data.costPerUnit || 0,
+        min_stock_threshold: 50,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return {
+      id: created.id,
+      name: created.name,
+      nameMr: created.name_mr,
+      category: created.category,
+      unit: created.unit,
+      currentStock: 0,
+      minStockThreshold: Number(created.min_stock_threshold || 50),
+      costPerUnit: Number(created.cost_per_unit || 0),
+      supplier: data.supplier || 'Supplier',
+      status: 'out_of_stock',
+      lastRestockedDate: new Date().toISOString().split('T')[0],
+    };
+  },
+
   async fetchRawMaterialMovements(): Promise<RawMaterialMovement[]> {
     const { data: txs, error } = await supabase
       .from('raw_material_transactions')

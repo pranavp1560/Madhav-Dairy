@@ -515,6 +515,84 @@ export const invoiceService = {
 
     if (error) throw error;
     return { success: true };
+  },
+
+  /**
+   * Permanently deletes an invoice and its dependencies (items, allocations, submissions, ledger entries),
+   * and if generated from an order, resets the order's status to 'confirmed'.
+   */
+  async deleteInvoice(invoiceId: string): Promise<void> {
+    // 1. Fetch invoice to find associated order and details
+    const { data: inv, error: fetchErr } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, order_id, status')
+      .eq('id', invoiceId)
+      .maybeSingle();
+
+    if (fetchErr) throw fetchErr;
+    if (!inv) throw new Error('Invoice not found');
+
+    // 2. Delete payment allocations for this invoice
+    const { error: paErr } = await supabase
+      .from('payment_allocations')
+      .delete()
+      .eq('invoice_id', invoiceId);
+    if (paErr) console.warn('Could not delete payment allocations:', paErr);
+
+    // 3. Delete customer payment submissions for this invoice if any
+    const { error: cpsErr } = await supabase
+      .from('customer_payment_submissions')
+      .delete()
+      .eq('invoice_id', invoiceId);
+    if (cpsErr) console.warn('Could not delete payment submissions:', cpsErr);
+
+    // 4. Delete delivery trip invoice links if assigned to a trip
+    const { error: dtiErr } = await supabase
+      .from('delivery_trip_invoices')
+      .delete()
+      .eq('invoice_id', invoiceId);
+    if (dtiErr) console.warn('Could not delete delivery trip invoice entries:', dtiErr);
+
+    // 5. Delete double-entry ledger entries referencing this invoice
+    const { error: leErr } = await supabase
+      .from('ledger_entries')
+      .delete()
+      .eq('reference_id', invoiceId);
+    if (leErr) console.warn('Could not delete ledger entries:', leErr);
+
+    // 6. Delete inventory transactions created for direct delivery
+    const { error: itErr } = await supabase
+      .from('inventory_transactions')
+      .delete()
+      .eq('reference_id', invoiceId)
+      .eq('reference_type', 'invoice');
+    if (itErr) console.warn('Could not delete inventory transactions:', itErr);
+
+    // 7. Delete invoice items
+    const { error: iiErr } = await supabase
+      .from('invoice_items')
+      .delete()
+      .eq('invoice_id', invoiceId);
+    if (iiErr) console.warn('Could not delete invoice items:', iiErr);
+
+    // 8. If linked to an order, reset the order status back to 'confirmed'
+    if (inv.order_id) {
+      await supabase
+        .from('orders')
+        .update({
+          status: 'confirmed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', inv.order_id);
+    }
+
+    // 9. Delete the invoice record itself
+    const { error: delErr } = await supabase
+      .from('invoices')
+      .delete()
+      .eq('id', invoiceId);
+
+    if (delErr) throw delErr;
   }
 };
 

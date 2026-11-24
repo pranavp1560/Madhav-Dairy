@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useDairy } from '../../context/DairyContext';
-import { RawMaterial } from '../../types/dairy';
+import { RawMaterial, PaymentMethod } from '../../types/dairy';
 import { StatusBadge } from '../ui/StatusBadge';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -46,6 +46,10 @@ export const RawMaterialsView: React.FC = () => {
   const [newMaterialUnit, setNewMaterialUnit] = useState('Litres');
   const [purchaseQty, setPurchaseQty] = useState<number>(100);
   const [purchaseCost, setPurchaseCost] = useState<number>(36);
+  const [purchaseAmount, setPurchaseAmount] = useState<number>(3600);
+  const [isManualAmount, setIsManualAmount] = useState<boolean>(false);
+  const [purchasePaymentMode, setPurchasePaymentMode] = useState<PaymentMethod>('upi');
+  const [recordAsExpense, setRecordAsExpense] = useState<boolean>(true);
   const [purchaseSupplier, setPurchaseSupplier] = useState('');
   const [purchaseRef, setPurchaseRef] = useState('');
   const [purchaseNotes, setPurchaseNotes] = useState('');
@@ -89,11 +93,17 @@ export const RawMaterialsView: React.FC = () => {
       setPurchaseMaterialId(matId);
       setIsNewMaterialMode(false);
     }
+    const cost = target?.costPerUnit || 35;
+    const qty = target && target.unit === 'Litres' ? 500 : 50;
     if (target) {
-      setPurchaseCost(target.costPerUnit || 35);
+      setPurchaseCost(cost);
       setPurchaseSupplier(target.supplier || 'Farmer Co-op / Supplier');
     }
-    setPurchaseQty(target && target.unit === 'Litres' ? 500 : 50);
+    setPurchaseQty(qty);
+    setPurchaseAmount(qty * cost);
+    setIsManualAmount(false);
+    setPurchasePaymentMode('upi');
+    setRecordAsExpense(true);
     setPurchaseRef(`PO-2026-${Math.floor(100 + Math.random() * 900)}`);
     setPurchaseNotes('');
     setIsPurchaseModalOpen(true);
@@ -115,6 +125,8 @@ export const RawMaterialsView: React.FC = () => {
   // Handle Purchase Submit
   const handlePurchaseSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const effectiveTotal = isManualAmount ? Number(purchaseAmount) : Number(purchaseQty * purchaseCost);
+
     if (isNewMaterialMode) {
       if (!newMaterialName.trim() || purchaseQty <= 0) return;
       addRawMaterialPurchase({
@@ -123,6 +135,9 @@ export const RawMaterialsView: React.FC = () => {
         unit: newMaterialUnit,
         qty: Number(purchaseQty),
         costPerUnit: Number(purchaseCost),
+        totalAmount: effectiveTotal,
+        paymentMethod: purchasePaymentMode,
+        recordAsExpense,
         supplier: purchaseSupplier.trim() || 'General Supplier',
         reference: purchaseRef || `PO-2026-${Math.floor(100 + Math.random() * 900)}`,
         notes: purchaseNotes,
@@ -133,6 +148,9 @@ export const RawMaterialsView: React.FC = () => {
         materialId: purchaseMaterialId,
         qty: Number(purchaseQty),
         costPerUnit: Number(purchaseCost),
+        totalAmount: effectiveTotal,
+        paymentMethod: purchasePaymentMode,
+        recordAsExpense,
         supplier: purchaseSupplier.trim(),
         reference: purchaseRef || `PO-2026-${Math.floor(100 + Math.random() * 900)}`,
         notes: purchaseNotes,
@@ -658,14 +676,18 @@ export const RawMaterialsView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">
-                Quantity Purchased ({isNewMaterialMode ? newMaterialUnit : (currentPurchaseTarget?.unit || 'Units')})
+                Quantity Purchased ({isNewMaterialMode ? newMaterialUnit : (currentPurchaseTarget?.unit || 'Units')}) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 min={1}
                 step="any"
                 value={purchaseQty}
-                onChange={e => setPurchaseQty(Number(e.target.value))}
+                onChange={e => {
+                  const q = Number(e.target.value);
+                  setPurchaseQty(q);
+                  if (!isManualAmount) setPurchaseAmount(Math.round(q * purchaseCost));
+                }}
                 required
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers font-bold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
@@ -678,18 +700,72 @@ export const RawMaterialsView: React.FC = () => {
                 min={0}
                 step="any"
                 value={purchaseCost}
-                onChange={e => setPurchaseCost(Number(e.target.value))}
+                onChange={e => {
+                  const c = Number(e.target.value);
+                  setPurchaseCost(c);
+                  if (!isManualAmount) setPurchaseAmount(Math.round(purchaseQty * c));
+                }}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-mono-numbers font-bold text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:bg-white focus:outline-none"
               />
             </div>
           </div>
 
-          {/* Bill Calculation Card */}
-          <div className="p-3 bg-blue-50/60 rounded-xl border border-blue-200 flex items-center justify-between text-xs">
-            <span className="font-medium text-slate-700">Estimated Total Purchase Amount:</span>
-            <span className="text-base font-extrabold font-mono-numbers text-blue-700">
-              ₹{(purchaseQty * purchaseCost).toLocaleString('en-IN')}
-            </span>
+          {/* Editable Total Purchase Amount */}
+          <div className="p-3 bg-blue-50/70 rounded-xl border border-blue-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-800 text-xs">
+                Total Purchase Amount (₹) <span className="text-red-500">*</span>
+              </label>
+              <span className="text-[11px] text-blue-700 font-medium">
+                {isManualAmount ? 'Lump-sum edited' : `Auto: ${purchaseQty} × ₹${purchaseCost}`}
+              </span>
+            </div>
+            <input
+              type="number"
+              min={0}
+              step="any"
+              value={purchaseAmount}
+              onChange={e => {
+                setPurchaseAmount(Number(e.target.value));
+                setIsManualAmount(true);
+              }}
+              required
+              className="w-full p-2.5 bg-white border border-blue-300 rounded-lg text-sm font-mono-numbers font-extrabold text-blue-900 focus:ring-2 focus:ring-blue-200 focus:border-blue-600 focus:outline-none"
+            />
+          </div>
+
+          {/* Expense Reflection & Payment Mode */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/40 border border-amber-200 rounded-xl">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Payment Method</label>
+              <select
+                value={purchasePaymentMode}
+                onChange={e => setPurchasePaymentMode(e.target.value as PaymentMethod)}
+                className="w-full p-2 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-100 focus:border-blue-600 focus:outline-none"
+              >
+                <option value="upi">UPI / Online</option>
+                <option value="bank_transfer">Bank Transfer (NEFT/RTGS)</option>
+                <option value="cash">Cash Payment</option>
+                <option value="cheque">Cheque</option>
+              </select>
+            </div>
+
+            <div className="flex flex-col justify-center">
+              <label className="flex items-center gap-2 cursor-pointer pt-2">
+                <input
+                  type="checkbox"
+                  checked={recordAsExpense}
+                  onChange={e => setRecordAsExpense(e.target.checked)}
+                  className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
+                />
+                <span className="text-xs font-bold text-slate-800">
+                  Reflect in Operating Expenses
+                </span>
+              </label>
+              <span className="text-[10px] text-slate-500 ml-6 mt-0.5">
+                Auto-records under category &quot;Raw Material&quot; in Expenses
+              </span>
+            </div>
           </div>
 
           {/* Supplier & PO Reference */}
