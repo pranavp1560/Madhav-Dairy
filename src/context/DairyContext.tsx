@@ -352,8 +352,10 @@ interface DairyContextType {
     amount: number;
     paymentMethod: Payment['paymentMethod'];
     paidTo: string;
-    referenceNumber: string;
+    referenceNumber?: string;
+    date?: string;
   }) => Promise<Expense>;
+  deleteExpense: (id: string) => Promise<void>;
 
   // Vendor / Farmer Advance Tracking & Adjustments
   suppliers: Supplier[];
@@ -1343,7 +1345,8 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     amount: number;
     paymentMethod: Payment['paymentMethod'];
     paidTo: string;
-    referenceNumber: string;
+    referenceNumber?: string;
+    date?: string;
   }): Promise<Expense> => {
     try {
       const newExp = await expenseService.addExpense(data);
@@ -1352,6 +1355,18 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return newExp;
     } catch (err: any) {
       addToast(`Error recording expense: ${err.message}`, 'error');
+      throw err;
+    }
+  };
+
+  // Delete Expense
+  const deleteExpense = async (id: string): Promise<void> => {
+    try {
+      await expenseService.deleteExpense(id);
+      setExpenses(prev => prev.filter(e => e.id !== id));
+      addToast('Expense entry deleted successfully', 'success');
+    } catch (err: any) {
+      addToast(`Error deleting expense: ${err.message}`, 'error');
       throw err;
     }
   };
@@ -2897,6 +2912,7 @@ export const DairyProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         recordPayment,
         recordCustomerPaymentWithAllocations,
         addExpense,
+        deleteExpense,
         suppliers,
         vendorAdvances,
         vendorBills,

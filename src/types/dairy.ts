@@ -436,7 +436,9 @@ export type ExpenseCategory =
   | 'Fuel'
   | 'Rent'
   | 'Marketing'
-  | 'Other';
+  | 'Office & Admin'
+  | 'Other'
+  | (string & {});
 
 export interface Expense {
   id: string;
